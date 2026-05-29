@@ -1,0 +1,9 @@
+-- Intentionally left non-destructive for the first production-safe schema pass.
+--
+-- Rationale:
+-- Forward-only migrations must remain safe to apply in every environment, including
+-- production. Shipping fake apps, monitors, Slack channels, or internal status pages as
+-- part of the normal migration chain would pollute any fresh environment.
+--
+-- Local development seed data should be loaded explicitly through a separate dev-only
+-- workflow once Docker-backed Supabase local reset is available.
