@@ -1,10 +1,19 @@
-import "server-only";
-
 import { redirect } from "next/navigation";
 
+import { ApiError } from "@/lib/server/api/errors";
+import { getActiveOrganizationForUser } from "@/lib/server/auth/organization-context";
 import { createSupabaseServerClient, hasSupabaseServerEnv } from "@/lib/server/supabase/client";
 
-export async function getOptionalUser() {
+type SupabaseUser = {
+  id: string;
+  email?: string | null;
+};
+
+type RequireUserOptions = {
+  redirectToLogin?: boolean;
+};
+
+export async function getCurrentUser(): Promise<SupabaseUser | null> {
   if (!hasSupabaseServerEnv()) {
     return null;
   }
@@ -12,36 +21,56 @@ export async function getOptionalUser() {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
-    error,
   } = await supabase.auth.getUser();
 
-  if (error) {
+  if (!user) {
     return null;
   }
 
-  return user;
+  return {
+    id: user.id,
+    email: user.email,
+  };
 }
 
-export async function requireAuthenticatedUser() {
-  const user = await getOptionalUser();
+export async function getOptionalUser() {
+  return getCurrentUser();
+}
 
-  if (!user) {
+export async function requireUser(
+  options: RequireUserOptions = {},
+): Promise<SupabaseUser> {
+  const user = await getCurrentUser();
+
+  if (user) {
+    return user;
+  }
+
+  if (options.redirectToLogin) {
     redirect("/login");
   }
 
-  return user;
+  throw new ApiError(401, "AUTHENTICATION_REQUIRED", "Authentication required.");
+}
+
+export async function requireAuthenticatedUser() {
+  return requireUser({ redirectToLogin: true });
 }
 
 export async function requireAppSession() {
-  const user = await requireAuthenticatedUser();
+  const user = await requireUser({ redirectToLogin: true });
+  const organizationContext = await getActiveOrganizationForUser(user.id);
 
-  return { user };
+  return {
+    user,
+    organizationContext,
+  };
 }
 
-export function requireInternalJob(headerValue?: string | null) {
-  const cronSecret = process.env.CRON_SECRET;
+export function requireInternalJob(headerValue: string | null) {
+  const expectedSecret = process.env.CRON_SECRET;
 
-  if (!cronSecret || !headerValue || headerValue !== cronSecret) {
-    throw new Error("Unauthorized internal job request.");
+  if (!expectedSecret || headerValue !== expectedSecret) {
+    throw new Error("Unauthorized internal job execution.");
   }
 }

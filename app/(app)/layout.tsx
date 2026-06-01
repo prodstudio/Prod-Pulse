@@ -10,5 +10,13 @@ export default async function ProtectedAppLayout({
 }>) {
   const session = await requireAppSession();
 
-  return <AppShell userEmail={session.user.email}>{children}</AppShell>;
+  return (
+    <AppShell
+      userEmail={session.user.email}
+      organizationName={session.organizationContext?.organization.name ?? null}
+      role={session.organizationContext?.membership.role ?? null}
+    >
+      {children}
+    </AppShell>
+  );
 }

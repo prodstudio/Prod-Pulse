@@ -2,8 +2,8 @@ import Link from "next/link";
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", active: true },
-  { label: "Apps", href: "#", active: false },
-  { label: "Monitors", href: "#", active: false },
+  { label: "Apps", href: "/apps", active: true },
+  { label: "Monitors", href: "/monitors", active: true },
   { label: "Incidents", href: "#", active: false },
   { label: "Alerts", href: "#", active: false },
   { label: "Heartbeats", href: "#", active: false },
@@ -44,7 +44,7 @@ export function AppSidebar() {
         )}
       </nav>
       <div className="border-t border-sidebar-border px-6 py-4 text-xs uppercase tracking-[0.18em] text-sidebar-foreground/50">
-        Phase 0 shell only
+        Phase 2 app foundation
       </div>
     </aside>
   );
