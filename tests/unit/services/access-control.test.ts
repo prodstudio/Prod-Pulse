@@ -72,6 +72,47 @@ describe("auth and service access control", () => {
     });
   });
 
+  it("rejects cross-org incident access", async () => {
+    const membershipsChain = createChain({
+      data: {
+        id: "membership-1",
+        organization_id: "org-1",
+        user_id: "user-1",
+        role: "viewer",
+        disabled_at: null,
+        created_at: "2026-05-29T00:00:00Z",
+        organizations: {
+          id: "org-1",
+          name: "Prod Studio",
+          slug: "prod-studio",
+          is_active: true,
+        },
+      },
+    });
+    const incidentsChain = createChain({ data: null });
+
+    const adminClient = {
+      from: vi.fn((table: string) => {
+        if (table === "memberships") {
+          return membershipsChain;
+        }
+
+        if (table === "incidents") {
+          return incidentsChain;
+        }
+
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    };
+
+    await expect(
+      requireResourceAccess("user-1", "incident", "incident-1", "org-1", adminClient as never),
+    ).rejects.toMatchObject({
+      status: 404,
+      code: "RESOURCE_NOT_FOUND",
+    });
+  });
+
   it("allows admin role checks for privileged mutations", async () => {
     const membershipsChain = createChain({
       data: [

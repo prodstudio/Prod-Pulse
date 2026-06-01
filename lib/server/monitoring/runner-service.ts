@@ -12,6 +12,7 @@ import { persistScheduledMonitorExecutionResult } from "@/lib/server/monitoring/
 import type { SafeMonitorResult } from "@/lib/server/monitoring/result-sanitization";
 import { createSupabaseAdminClient } from "@/lib/server/supabase/admin";
 import { mapPostgresError } from "@/lib/server/api/errors";
+import { processScheduledIncidentState } from "@/lib/server/incidents/incident-engine";
 
 type AdminLike = ReturnType<typeof createSupabaseAdminClient>;
 
@@ -21,6 +22,7 @@ type RunnerDependencies = {
   evaluateMonitorImpl?: typeof evaluateMonitor;
   now?: Date;
   persistScheduledMonitorExecutionResultImpl?: typeof persistScheduledMonitorExecutionResult;
+  processScheduledIncidentStateImpl?: typeof processScheduledIncidentState;
   releaseMonitorLockImpl?: typeof releaseMonitorLock;
   selectDueMonitorCandidatesImpl?: typeof selectDueMonitorCandidates;
 };
@@ -31,8 +33,15 @@ export type MonitorRunnerSummary = {
   executedCount: number;
   skippedCount: number;
   failedCount: number;
+  incidentCreatedCount: number;
+  incidentUpdatedCount: number;
   durationMs: number;
 };
+
+type PersistedRunnerSummary = Pick<
+  MonitorRunnerSummary,
+  "dueCount" | "executedCount" | "skippedCount" | "failedCount" | "durationMs"
+>;
 
 export type RunScheduledMonitorRunnerOptions = {
   batchSize?: number;
@@ -195,7 +204,7 @@ async function createRunnerRun(adminClient: AdminLike) {
 
 async function completeRunnerRun(
   runId: string,
-  summary: Omit<MonitorRunnerSummary, "runId">,
+  summary: PersistedRunnerSummary,
   failureSummary: Array<Record<string, string | number | null>>,
   adminClient: AdminLike,
 ) {
@@ -219,7 +228,7 @@ async function completeRunnerRun(
 
 async function markRunnerRunFailed(
   runId: string,
-  summary: Omit<MonitorRunnerSummary, "runId">,
+  summary: PersistedRunnerSummary,
   adminClient: AdminLike,
 ) {
   const { error } = await adminClient
@@ -304,6 +313,8 @@ export async function runScheduledMonitorRunner(
     executedCount: 0,
     skippedCount: 0,
     failedCount: 0,
+    incidentCreatedCount: 0,
+    incidentUpdatedCount: 0,
     durationMs: 0,
   };
   const failureSummary: Array<Record<string, string | number | null>> = [];
@@ -317,6 +328,8 @@ export async function runScheduledMonitorRunner(
   const persistScheduledMonitorExecutionResultImpl =
     dependencies.persistScheduledMonitorExecutionResultImpl ??
     persistScheduledMonitorExecutionResult;
+  const processScheduledIncidentStateImpl =
+    dependencies.processScheduledIncidentStateImpl ?? processScheduledIncidentState;
 
   try {
     const dueMonitors = await selectDueMonitorCandidatesImpl(now, batchSize, adminClient);
@@ -406,6 +419,26 @@ export async function runScheduledMonitorRunner(
             errorCode: persisted.result.errorCode,
             status: resultStatus,
           });
+        }
+
+        try {
+          const incidentOutcome = await processScheduledIncidentStateImpl(
+            {
+              monitor: lockedMonitor,
+              result: persisted.result,
+              suppressedByMaintenanceWindowId: suppressedWindowId,
+            },
+            adminClient,
+          );
+
+          if (incidentOutcome.created) {
+            summary.incidentCreatedCount += 1;
+          }
+          if (incidentOutcome.updated) {
+            summary.incidentUpdatedCount += 1;
+          }
+        } catch (incidentError) {
+          console.error("Scheduled incident processing failed", incidentError);
         }
       } catch (error) {
         const fallbackExecution = createUnexpectedExecutionResult(now);

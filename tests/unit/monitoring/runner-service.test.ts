@@ -221,6 +221,12 @@ describe("runner service", () => {
         acquireMonitorLockImpl,
         evaluateMonitorImpl,
         persistScheduledMonitorExecutionResultImpl,
+        processScheduledIncidentStateImpl: vi.fn().mockResolvedValue({
+          created: false,
+          updated: false,
+          incidentId: null,
+          action: "noop",
+        }),
         releaseMonitorLockImpl,
       },
       admin.client as never,
@@ -300,6 +306,12 @@ describe("runner service", () => {
           .mockRejectedValueOnce(new Error("boom"))
           .mockResolvedValueOnce(createExecutionResult()),
         persistScheduledMonitorExecutionResultImpl,
+        processScheduledIncidentStateImpl: vi.fn().mockResolvedValue({
+          created: false,
+          updated: false,
+          incidentId: null,
+          action: "noop",
+        }),
         releaseMonitorLockImpl,
       },
       admin.client as never,
@@ -343,6 +355,12 @@ describe("runner service", () => {
         acquireMonitorLockImpl: vi.fn().mockResolvedValue(lockedMonitor),
         evaluateMonitorImpl: vi.fn().mockResolvedValue(createExecutionResult()),
         persistScheduledMonitorExecutionResultImpl,
+        processScheduledIncidentStateImpl: vi.fn().mockResolvedValue({
+          created: false,
+          updated: false,
+          incidentId: null,
+          action: "noop",
+        }),
         releaseMonitorLockImpl,
       },
       admin.client as never,
@@ -404,6 +422,12 @@ describe("runner service", () => {
         acquireMonitorLockImpl: vi.fn().mockResolvedValue(lockedMonitor),
         evaluateMonitorImpl: vi.fn().mockResolvedValue(createExecutionResult()),
         persistScheduledMonitorExecutionResultImpl,
+        processScheduledIncidentStateImpl: vi.fn().mockResolvedValue({
+          created: false,
+          updated: false,
+          incidentId: null,
+          action: "noop",
+        }),
         releaseMonitorLockImpl,
       },
       admin.client as never,
@@ -424,6 +448,12 @@ describe("runner service", () => {
   it("counts duplicate scheduled results from the persisted outcome, not the replayed execution", async () => {
     const admin = createAdminClient();
     const lockedMonitor = createMonitor();
+    const processScheduledIncidentStateImpl = vi.fn().mockResolvedValue({
+      created: false,
+      updated: true,
+      incidentId: "incident-1",
+      action: "opened",
+    });
 
     const summary = await runScheduledMonitorRunner(
       {},
@@ -450,6 +480,7 @@ describe("runner service", () => {
           },
           duplicate: true,
         }),
+        processScheduledIncidentStateImpl,
         releaseMonitorLockImpl: vi.fn().mockResolvedValue(undefined),
       },
       admin.client as never,
@@ -458,6 +489,140 @@ describe("runner service", () => {
     expect(summary).toMatchObject<Partial<MonitorRunnerSummary>>({
       executedCount: 1,
       failedCount: 0,
+      incidentUpdatedCount: 1,
+    });
+    expect(processScheduledIncidentStateImpl).toHaveBeenCalledWith(
+      {
+        monitor: lockedMonitor,
+        result: expect.objectContaining({
+          id: "result-duplicate-success",
+          status: "success",
+        }),
+        suppressedByMaintenanceWindowId: null,
+      },
+      admin.client,
+    );
+  });
+
+  it("records incident counts from the scheduled incident engine", async () => {
+    const admin = createAdminClient();
+    const lockedMonitor = createMonitor();
+
+    const summary = await runScheduledMonitorRunner(
+      {},
+      {
+        now: new Date("2026-06-01T00:00:00Z"),
+        selectDueMonitorCandidatesImpl: vi.fn().mockResolvedValue([lockedMonitor]),
+        acquireMonitorLockImpl: vi.fn().mockResolvedValue(lockedMonitor),
+        evaluateMonitorImpl: vi.fn().mockResolvedValue(createExecutionResult({ status: "failure" })),
+        persistScheduledMonitorExecutionResultImpl: vi.fn().mockResolvedValue({
+          result: {
+            id: "result-1",
+            status: "failure",
+            triggerSource: "scheduled",
+            checkedAt: "2026-06-01T00:00:10Z",
+            durationMs: 10000,
+            httpStatus: 503,
+            errorCode: "HTTP_503",
+            errorSummary: "The endpoint responded with HTTP 503.",
+            responseSummary: null,
+            assertionSummary: null,
+            metadataSummary: null,
+          },
+          duplicate: false,
+        }),
+        processScheduledIncidentStateImpl: vi.fn().mockResolvedValue({
+          created: true,
+          updated: false,
+          incidentId: "incident-1",
+          action: "created",
+        }),
+        releaseMonitorLockImpl: vi.fn().mockResolvedValue(undefined),
+      },
+      admin.client as never,
+    );
+
+    expect(summary).toMatchObject<Partial<MonitorRunnerSummary>>({
+      executedCount: 1,
+      failedCount: 1,
+      incidentCreatedCount: 1,
+      incidentUpdatedCount: 0,
+    });
+  });
+
+  it("continues when incident processing fails for one monitor", async () => {
+    const admin = createAdminClient();
+    const lockedMonitorOne = createMonitor({ id: "monitor-1" });
+    const lockedMonitorTwo = createMonitor({ id: "monitor-2", slug: "monitor-2" });
+
+    const summary = await runScheduledMonitorRunner(
+      {},
+      {
+        now: new Date("2026-06-01T00:00:00Z"),
+        selectDueMonitorCandidatesImpl: vi.fn().mockResolvedValue([
+          lockedMonitorOne,
+          lockedMonitorTwo,
+        ]),
+        acquireMonitorLockImpl: vi
+          .fn()
+          .mockResolvedValueOnce(lockedMonitorOne)
+          .mockResolvedValueOnce(lockedMonitorTwo),
+        evaluateMonitorImpl: vi
+          .fn()
+          .mockResolvedValueOnce(createExecutionResult({ status: "failure" }))
+          .mockResolvedValueOnce(createExecutionResult()),
+        persistScheduledMonitorExecutionResultImpl: vi
+          .fn()
+          .mockResolvedValueOnce({
+            result: {
+              id: "result-1",
+              status: "failure",
+              triggerSource: "scheduled",
+              checkedAt: "2026-06-01T00:00:10Z",
+              durationMs: 10000,
+              httpStatus: 503,
+              errorCode: "HTTP_503",
+              errorSummary: "The endpoint responded with HTTP 503.",
+              responseSummary: null,
+              assertionSummary: null,
+              metadataSummary: null,
+            },
+            duplicate: false,
+          })
+          .mockResolvedValueOnce({
+            result: {
+              id: "result-2",
+              status: "success",
+              triggerSource: "scheduled",
+              checkedAt: "2026-06-01T00:00:20Z",
+              durationMs: 10000,
+              httpStatus: 200,
+              errorCode: null,
+              errorSummary: null,
+              responseSummary: null,
+              assertionSummary: null,
+              metadataSummary: null,
+            },
+            duplicate: false,
+          }),
+        processScheduledIncidentStateImpl: vi
+          .fn()
+          .mockRejectedValueOnce(new Error("incident engine failure"))
+          .mockResolvedValueOnce({
+            created: false,
+            updated: true,
+            incidentId: "incident-2",
+            action: "monitoring",
+          }),
+        releaseMonitorLockImpl: vi.fn().mockResolvedValue(undefined),
+      },
+      admin.client as never,
+    );
+
+    expect(summary).toMatchObject<Partial<MonitorRunnerSummary>>({
+      executedCount: 2,
+      incidentCreatedCount: 0,
+      incidentUpdatedCount: 1,
     });
   });
 });

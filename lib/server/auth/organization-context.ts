@@ -44,12 +44,20 @@ export type ActiveOrganizationContext = {
 
 type AdminLike = ReturnType<typeof createSupabaseAdminClient>;
 
-type ResourceKind = "app" | "environment" | "monitor";
+type ResourceKind = "app" | "environment" | "monitor" | "incident";
 
 const RESOURCE_TABLES: Record<ResourceKind, string> = {
   app: "monitored_apps",
   environment: "app_environments",
   monitor: "monitors",
+  incident: "incidents",
+};
+
+const RESOURCE_SELECTS: Record<ResourceKind, string> = {
+  app: "id, organization_id, app_id, environment_id, name, slug",
+  environment: "id, organization_id, app_id, environment_id, name, slug",
+  monitor: "id, organization_id, app_id, environment_id, name, slug",
+  incident: "id, organization_id, app_id, environment_id, monitor_id",
 };
 
 function normalizeMembership(row: MembershipRecord): ActiveOrganizationContext | null {
@@ -176,7 +184,7 @@ export async function requireResourceAccess(
 
   const { data, error } = await adminClient
     .from(table)
-    .select("id, organization_id, app_id, environment_id, name, slug")
+    .select(RESOURCE_SELECTS[resourceKind])
     .eq("id", resourceId)
     .eq("organization_id", context.organization.id)
     .maybeSingle();
@@ -191,11 +199,12 @@ export async function requireResourceAccess(
 
   return {
     organizationContext: context,
-    resource: data as {
+    resource: data as unknown as {
       id: string;
       organization_id: string;
       app_id?: string | null;
       environment_id?: string | null;
+      monitor_id?: string | null;
       name?: string | null;
       slug?: string | null;
     },

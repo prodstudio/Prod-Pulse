@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canManageIncidents,
   canRunMonitors,
   canManageOperationalConfig,
   canReadOrganization,
@@ -21,6 +22,13 @@ describe("organization permissions", () => {
     expect(canRunMonitors("responder")).toBe(true);
     expect(canRunMonitors("admin")).toBe(true);
     expect(canRunMonitors("owner")).toBe(true);
+  });
+
+  it("viewer cannot mutate incidents while responder, admin, and owner can", () => {
+    expect(canManageIncidents("viewer")).toBe(false);
+    expect(canManageIncidents("responder")).toBe(true);
+    expect(canManageIncidents("admin")).toBe(true);
+    expect(canManageIncidents("owner")).toBe(true);
   });
 
   it("role ladder remains ordered", () => {
