@@ -207,6 +207,25 @@ function summarizeMetadata(metadata: Record<string, unknown>) {
     return `Latency threshold ${metadata.thresholdStatus}`;
   }
 
+  if (typeof metadata.heartbeatName === "string") {
+    const payloadStatus =
+      typeof metadata.payloadStatus === "string" ? metadata.payloadStatus : null;
+    const lastSeenAt =
+      typeof metadata.lastSeenAt === "string" ? metadata.lastSeenAt : null;
+
+    if (payloadStatus && lastSeenAt) {
+      return `Heartbeat ${metadata.heartbeatName} ${payloadStatus}; last seen ${lastSeenAt}`;
+    }
+
+    if (payloadStatus) {
+      return `Heartbeat ${metadata.heartbeatName} ${payloadStatus}`;
+    }
+
+    if (lastSeenAt) {
+      return `Heartbeat ${metadata.heartbeatName}; last seen ${lastSeenAt}`;
+    }
+  }
+
   if (typeof metadata.note === "string") {
     return sanitizeStoredResponseExcerpt(metadata.note);
   }

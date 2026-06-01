@@ -297,4 +297,69 @@ describe("evaluateMonitor", () => {
     expect(successResult.status).toBe("success");
     expect(degradedResult.status).toBe("degraded");
   });
+
+  it("evaluates fresh and stale heartbeat monitors from linked heartbeat state", async () => {
+    const getRawHeartbeatByMonitorIdImpl = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: "heartbeat-1",
+        organizationId: "org-1",
+        appId: "app-1",
+        environmentId: "env-1",
+        monitorId: "monitor-1",
+        name: "Nightly sync",
+        slug: "nightly-sync",
+        expectedIntervalSeconds: 300,
+        graceSeconds: 120,
+        tokenHash: "hashed",
+        tokenHint: "...secret",
+        isEnabled: true,
+        status: "operational",
+        lastSeenAt: "2026-06-01T03:03:00Z",
+        lastPayload: {
+          status: "ok",
+        },
+        createdAt: "2026-06-01T00:00:00Z",
+        updatedAt: "2026-06-01T03:03:00Z",
+      })
+      .mockResolvedValueOnce({
+        id: "heartbeat-1",
+        organizationId: "org-1",
+        appId: "app-1",
+        environmentId: "env-1",
+        monitorId: "monitor-1",
+        name: "Nightly sync",
+        slug: "nightly-sync",
+        expectedIntervalSeconds: 300,
+        graceSeconds: 120,
+        tokenHash: "hashed",
+        tokenHint: "...secret",
+        isEnabled: true,
+        status: "operational",
+        lastSeenAt: "2026-06-01T02:40:00Z",
+        lastPayload: {
+          status: "ok",
+        },
+        createdAt: "2026-06-01T00:00:00Z",
+        updatedAt: "2026-06-01T02:40:00Z",
+      });
+
+    const monitor = createMonitor({
+      type: "heartbeat",
+      targetUrl: null,
+    });
+
+    const freshResult = await evaluateMonitor(monitor, {
+      getRawHeartbeatByMonitorIdImpl,
+      now: new Date("2026-06-01T03:05:00Z"),
+    });
+    const staleResult = await evaluateMonitor(monitor, {
+      getRawHeartbeatByMonitorIdImpl,
+      now: new Date("2026-06-01T03:10:00Z"),
+    });
+
+    expect(freshResult.status).toBe("success");
+    expect(staleResult.status).toBe("failure");
+    expect(staleResult.errorCode).toBe("HEARTBEAT_STALE");
+  });
 });

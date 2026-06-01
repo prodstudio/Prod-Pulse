@@ -144,6 +144,9 @@ const DB_MONITOR_TYPE_TO_PUBLIC = {
   heartbeat_freshness: "heartbeat",
 } as const;
 
+const MONITOR_SELECT =
+  "id, organization_id, app_id, environment_id, name, slug, type, status, is_enabled, request_method, target_url, expected_status_codes, interval_seconds, next_check_at, timeout_ms, latency_threshold_ms, consecutive_failure_threshold, consecutive_recovery_threshold, configuration, description, created_at, updated_at";
+
 function mapRawMonitorRow(row: Record<string, unknown>): RawMonitorRecord {
   const typeKey = String(row.type) as keyof typeof DB_MONITOR_TYPE_TO_PUBLIC;
 
@@ -179,9 +182,7 @@ export async function listMonitorsForOrganization(
 ): Promise<SafeMonitorSummary[]> {
   const { data, error } = await adminClient
     .from("monitors")
-    .select(
-      "id, organization_id, app_id, environment_id, name, slug, type, status, is_enabled, request_method, target_url, expected_status_codes, interval_seconds, next_check_at, timeout_ms, latency_threshold_ms, consecutive_failure_threshold, consecutive_recovery_threshold, configuration, description, created_at, updated_at",
-    )
+    .select(MONITOR_SELECT)
     .eq("organization_id", organizationId)
     .order("name", { ascending: true });
 
@@ -210,9 +211,7 @@ async function getRawMonitorById(
 
   const { data, error } = await adminClient
     .from("monitors")
-    .select(
-      "id, organization_id, app_id, environment_id, name, slug, type, status, is_enabled, request_method, target_url, expected_status_codes, interval_seconds, next_check_at, timeout_ms, latency_threshold_ms, consecutive_failure_threshold, consecutive_recovery_threshold, configuration, description, created_at, updated_at",
-    )
+    .select(MONITOR_SELECT)
     .eq("id", resource.id)
     .eq("organization_id", resource.organization_id)
     .maybeSingle();
@@ -226,6 +225,25 @@ async function getRawMonitorById(
   }
 
   return mapRawMonitorRow(data as Record<string, unknown>);
+}
+
+export async function getRawMonitorByIdForOrganization(
+  monitorId: string,
+  organizationId: string,
+  adminClient: AdminLike = createSupabaseAdminClient(),
+): Promise<RawMonitorRecord | null> {
+  const { data, error } = await adminClient
+    .from("monitors")
+    .select(MONITOR_SELECT)
+    .eq("id", monitorId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  if (error) {
+    throw mapPostgresError(error);
+  }
+
+  return data ? mapRawMonitorRow(data as Record<string, unknown>) : null;
 }
 
 export async function getMonitorById(
@@ -320,9 +338,7 @@ export async function createMonitor(
       next_check_at: new Date().toISOString(),
       created_by: context.userId,
     })
-    .select(
-      "id, organization_id, app_id, environment_id, name, slug, type, status, is_enabled, request_method, target_url, expected_status_codes, interval_seconds, next_check_at, timeout_ms, latency_threshold_ms, consecutive_failure_threshold, consecutive_recovery_threshold, configuration, description, created_at, updated_at",
-    )
+    .select(MONITOR_SELECT)
     .single();
 
   if (error) {
@@ -433,9 +449,7 @@ export async function updateMonitor(
     .update(payload)
     .eq("id", monitorId)
     .eq("organization_id", context.organization.id)
-    .select(
-      "id, organization_id, app_id, environment_id, name, slug, type, status, is_enabled, request_method, target_url, expected_status_codes, interval_seconds, next_check_at, timeout_ms, latency_threshold_ms, consecutive_failure_threshold, consecutive_recovery_threshold, configuration, description, created_at, updated_at",
-    )
+    .select(MONITOR_SELECT)
     .single();
 
   if (error) {

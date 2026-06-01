@@ -12,6 +12,7 @@ import {
 import { requireAppSession, requireUser } from "@/lib/server/auth/guards";
 import { requireOrgMembership } from "@/lib/server/auth/organization-context";
 import { canRunMonitors } from "@/lib/server/auth/permissions";
+import { getHeartbeatByMonitorId } from "@/lib/server/heartbeats/heartbeat-service";
 import { executeManualMonitorRun } from "@/lib/server/monitoring/execute";
 import { listMonitorResultsForMonitor } from "@/lib/server/monitoring/result-service";
 import { getMonitorById } from "@/lib/server/monitors/monitor-service";
@@ -82,6 +83,10 @@ export default async function MonitorDetailPage({ params, searchParams }: PagePr
   const canRun = canRunMonitors(session.organizationContext.membership.role);
   const latestResult = results[0] ?? null;
   const errorMessage = getActionErrorMessage(statusParams.runError);
+  const linkedHeartbeat =
+    monitor.type === "heartbeat"
+      ? await getHeartbeatByMonitorId(session.organizationContext.organization.id, monitor.id)
+      : null;
 
   async function runMonitorAction() {
     "use server";
@@ -170,6 +175,19 @@ export default async function MonitorDetailPage({ params, searchParams }: PagePr
           value={monitor.environmentId ?? "App-level monitor without environment binding"}
         />
         <ConfigRow label="Enabled" value={monitor.isEnabled ? "Yes" : "No"} />
+        {linkedHeartbeat ? (
+          <>
+            <ConfigRow label="Heartbeat status" value={linkedHeartbeat.status} />
+            <ConfigRow
+              label="Heartbeat last seen"
+              value={linkedHeartbeat.lastSeenAt ?? "No ping received yet"}
+            />
+            <ConfigRow
+              label="Heartbeat freshness"
+              value={`${linkedHeartbeat.expectedIntervalSeconds}s + ${linkedHeartbeat.graceSeconds}s grace`}
+            />
+          </>
+        ) : null}
       </section>
 
       <section className="rounded-lg border border-border bg-card p-5">

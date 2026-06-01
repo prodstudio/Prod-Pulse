@@ -6,7 +6,7 @@ const navItems = [
   { label: "Monitors", href: "/monitors", active: true },
   { label: "Incidents", href: "/incidents", active: true },
   { label: "Alerts", href: "/alerts/channels", active: true },
-  { label: "Heartbeats", href: "#", active: false },
+  { label: "Heartbeats", href: "/heartbeats", active: true },
   { label: "Status Preview", href: "#", active: false },
   { label: "Settings", href: "#", active: false },
 ];
@@ -44,7 +44,7 @@ export function AppSidebar() {
         )}
       </nav>
       <div className="border-t border-sidebar-border px-6 py-4 text-xs uppercase tracking-[0.18em] text-sidebar-foreground/50">
-        Phase 6 alert delivery foundation
+        Phase 7 heartbeat monitoring
       </div>
     </aside>
   );

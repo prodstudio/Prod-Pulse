@@ -1,5 +1,9 @@
 import "server-only";
 
+import "server-only";
+
+import { evaluateHeartbeatFreshness } from "@/lib/server/heartbeats/heartbeat-evaluator";
+import { getRawHeartbeatByMonitorId } from "@/lib/server/heartbeats/heartbeat-service";
 import type { RawMonitorRecord } from "@/lib/server/monitors/monitor-sanitization";
 import { validateHealthResponse } from "@/lib/health/validate-health-response";
 import { executeHttpRequest, type HttpExecutionResult } from "@/lib/server/monitoring/http";
@@ -34,6 +38,7 @@ export type MonitorExecutionResult = {
 type EvaluateDependencies = {
   executeHttpRequestImpl?: typeof executeHttpRequest;
   executeSslExpiryCheckImpl?: typeof executeSslExpiryCheck;
+  getRawHeartbeatByMonitorIdImpl?: typeof getRawHeartbeatByMonitorId;
   now?: Date;
 };
 
@@ -546,25 +551,21 @@ async function evaluateSslMonitor(
   });
 }
 
-function evaluateHeartbeatPlaceholder(): MonitorExecutionResult {
-  const now = new Date().toISOString();
+async function evaluateHeartbeatMonitor(
+  monitor: RawMonitorRecord,
+  now: Date,
+  getRawHeartbeatByMonitorIdImpl: typeof getRawHeartbeatByMonitorId,
+) {
+  const heartbeat = await getRawHeartbeatByMonitorIdImpl(
+    monitor.organizationId,
+    monitor.id,
+  );
 
-  return {
-    status: "skipped",
-    checkedAt: now,
-    startedAt: now,
-    finishedAt: now,
-    durationMs: 0,
-    httpStatus: null,
-    errorCode: "HEARTBEAT_MANUAL_UNSUPPORTED",
-    errorMessage: "Heartbeat monitors cannot be executed manually yet.",
-    responseExcerpt: null,
-    assertionResults: {},
-    metadata: {
-      note: "Heartbeat execution is a placeholder in Phase 3.",
-    },
-    attempts: [],
-  };
+  return evaluateHeartbeatFreshness({
+    monitor,
+    heartbeat,
+    now,
+  });
 }
 
 export async function evaluateMonitor(
@@ -574,6 +575,8 @@ export async function evaluateMonitor(
   const executeHttpRequestImpl = dependencies.executeHttpRequestImpl ?? executeHttpRequest;
   const executeSslExpiryCheckImpl =
     dependencies.executeSslExpiryCheckImpl ?? executeSslExpiryCheck;
+  const getRawHeartbeatByMonitorIdImpl =
+    dependencies.getRawHeartbeatByMonitorIdImpl ?? getRawHeartbeatByMonitorId;
   const now = dependencies.now ?? new Date();
 
   switch (monitor.type) {
@@ -588,7 +591,7 @@ export async function evaluateMonitor(
     case "ssl_expiry":
       return evaluateSslMonitor(monitor, executeSslExpiryCheckImpl);
     case "heartbeat":
-      return evaluateHeartbeatPlaceholder();
+      return evaluateHeartbeatMonitor(monitor, now, getRawHeartbeatByMonitorIdImpl);
     default:
       return buildResult({
         checkedAt: now.toISOString(),

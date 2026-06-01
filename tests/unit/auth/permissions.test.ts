@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   canManageAlerts,
+  canManageHeartbeats,
   canManageIncidents,
   canRunMonitors,
   canManageOperationalConfig,
@@ -23,6 +24,13 @@ describe("organization permissions", () => {
   it("responder cannot manage alert channels or rules", () => {
     expect(canManageAlerts("responder")).toBe(false);
     expect(canManageAlerts("owner")).toBe(true);
+  });
+
+  it("viewer and responder cannot manage heartbeats while admin and owner can", () => {
+    expect(canManageHeartbeats("viewer")).toBe(false);
+    expect(canManageHeartbeats("responder")).toBe(false);
+    expect(canManageHeartbeats("admin")).toBe(true);
+    expect(canManageHeartbeats("owner")).toBe(true);
   });
 
   it("responder, admin, and owner can run monitors", () => {

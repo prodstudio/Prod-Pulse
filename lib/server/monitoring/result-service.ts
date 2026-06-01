@@ -236,6 +236,21 @@ export async function persistScheduledMonitorExecutionResult(
   );
 }
 
+export async function persistHeartbeatMonitorExecutionResult(
+  input: PersistMonitorExecutionInput,
+  options: Omit<PersistExecutionOptions, "triggerSource" | "runnerRunId" | "suppressedByMaintenanceWindowId"> = {},
+  adminClient: AdminLike = createSupabaseAdminClient(),
+): Promise<PersistExecutionResult> {
+  return persistExecutionResult(
+    input,
+    {
+      triggerSource: "heartbeat",
+      idempotencyKey: options.idempotencyKey ?? null,
+    },
+    adminClient,
+  );
+}
+
 export async function listMonitorResultsForMonitor(
   userId: string,
   monitorId: string,

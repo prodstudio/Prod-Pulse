@@ -48,6 +48,7 @@ type ResourceKind =
   | "app"
   | "environment"
   | "monitor"
+  | "heartbeat"
   | "incident"
   | "alert_rule"
   | "notification_channel";
@@ -56,6 +57,7 @@ const RESOURCE_TABLES: Record<ResourceKind, string> = {
   app: "monitored_apps",
   environment: "app_environments",
   monitor: "monitors",
+  heartbeat: "heartbeats",
   incident: "incidents",
   alert_rule: "alert_rules",
   notification_channel: "notification_channels",
@@ -65,6 +67,7 @@ const RESOURCE_SELECTS: Record<ResourceKind, string> = {
   app: "id, organization_id, app_id, environment_id, name, slug",
   environment: "id, organization_id, app_id, environment_id, name, slug",
   monitor: "id, organization_id, app_id, environment_id, name, slug",
+  heartbeat: "id, organization_id, app_id, environment_id, monitor_id, name, slug",
   incident: "id, organization_id, app_id, environment_id, monitor_id",
   alert_rule: "id, organization_id, app_id, monitor_id, name",
   notification_channel: "id, organization_id, name, type",
