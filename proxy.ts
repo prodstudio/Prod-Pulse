@@ -1,6 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
+import {
+  buildLoginRedirectPath,
+  getDefaultPostLoginPath,
+  isProtectedAppPath,
+  sanitizeRedirectTarget,
+} from "@/lib/server/auth/redirects";
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -36,7 +43,24 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { pathname, search } = request.nextUrl;
+
+  if (!user && isProtectedAppPath(pathname)) {
+    const loginUrl = new URL(buildLoginRedirectPath(pathname, search), request.url);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  if (user && pathname === "/login") {
+    const next = sanitizeRedirectTarget(
+      request.nextUrl.searchParams.get("next"),
+      getDefaultPostLoginPath(),
+    );
+    return NextResponse.redirect(new URL(next, request.url));
+  }
 
   return response;
 }

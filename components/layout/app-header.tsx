@@ -1,5 +1,8 @@
 import { CalendarDays, ShieldCheck } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { signOutAction } from "@/lib/server/auth/actions";
+
 export function AppHeader({
   userEmail,
   organizationName,
@@ -36,6 +39,11 @@ export function AppHeader({
           <ShieldCheck className="size-4" />
           {userEmail ?? "No active user"}
         </span>
+        <form action={signOutAction}>
+          <Button type="submit" variant="outline" size="sm">
+            Sign out
+          </Button>
+        </form>
       </div>
     </header>
   );

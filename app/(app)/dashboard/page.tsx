@@ -29,11 +29,18 @@ function StatCard({
   return href ? <Link href={href}>{content}</Link> : content;
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await requireAppSession();
+  const params = (await searchParams) ?? {};
+  const errorCode = typeof params.error === "string" ? params.error : undefined;
+  const status = typeof params.status === "string" ? params.status : undefined;
 
   if (!session.organizationContext) {
-    return <NoOrganizationState />;
+    return <NoOrganizationState errorCode={errorCode} status={status} />;
   }
 
   const organizationId = session.organizationContext.organization.id;
