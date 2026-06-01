@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canManageAlerts,
   canManageIncidents,
   canRunMonitors,
   canManageOperationalConfig,
@@ -11,10 +12,17 @@ import {
 describe("organization permissions", () => {
   it("viewer cannot create or manage apps", () => {
     expect(canManageOperationalConfig("viewer")).toBe(false);
+    expect(canManageAlerts("viewer")).toBe(false);
   });
 
   it("admin can create and manage apps", () => {
     expect(canManageOperationalConfig("admin")).toBe(true);
+    expect(canManageAlerts("admin")).toBe(true);
+  });
+
+  it("responder cannot manage alert channels or rules", () => {
+    expect(canManageAlerts("responder")).toBe(false);
+    expect(canManageAlerts("owner")).toBe(true);
   });
 
   it("responder, admin, and owner can run monitors", () => {

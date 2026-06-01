@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 
 import { mapPostgresError, ApiError } from "@/lib/server/api/errors";
+import { queueIncidentAlertDeliveries } from "@/lib/server/alerts/alert-engine";
 import { writeAuditLog } from "@/lib/server/audit/audit-log";
 import {
   requireOrgMembership,
@@ -467,6 +468,25 @@ export async function acknowledgeIncident(
     request: context.request,
   });
 
+  try {
+    await queueIncidentAlertDeliveries(
+      {
+        incident: {
+          ...incident,
+          status: "acknowledged",
+          acknowledgedAt,
+          lastStateChangeAt: acknowledgedAt,
+          updatedAt: acknowledgedAt,
+        },
+        eventType: "incident_acknowledged",
+        eventTimestamp: acknowledgedAt,
+      },
+      adminClient,
+    );
+  } catch (queueError) {
+    console.error("Failed to queue incident_acknowledged alerts", queueError);
+  }
+
   return getIncidentById(context.userId, incident.id, incident.organizationId, adminClient);
 }
 
@@ -558,6 +578,30 @@ export async function createUserIncidentUpdate(
     request: context.request,
   });
 
+  try {
+    await queueIncidentAlertDeliveries(
+      {
+        incident: {
+          ...incident,
+          status: nextStatus ?? incident.status,
+          rootCause: rootCause ?? incident.rootCause,
+          resolutionNotes: resolutionNotes ?? incident.resolutionNotes,
+          lastStateChangeAt: nextStatus ? now : incident.lastStateChangeAt,
+          updatedAt: now,
+          recoveredAt:
+            nextStatus === "monitoring" ? incident.recoveredAt ?? now : incident.recoveredAt,
+          openedAt:
+            nextStatus === "investigating" && !incident.openedAt ? now : incident.openedAt,
+        },
+        eventType: "incident_updated",
+        eventTimestamp: now,
+      },
+      adminClient,
+    );
+  } catch (queueError) {
+    console.error("Failed to queue incident_updated alerts", queueError);
+  }
+
   return getIncidentById(context.userId, incident.id, incident.organizationId, adminClient);
 }
 
@@ -631,6 +675,28 @@ export async function resolveIncident(
     },
     request: context.request,
   });
+
+  try {
+    await queueIncidentAlertDeliveries(
+      {
+        incident: {
+          ...incident,
+          status: "resolved",
+          resolvedAt: now,
+          recoveredAt: incident.recoveredAt ?? now,
+          resolutionNotes,
+          rootCause,
+          lastStateChangeAt: now,
+          updatedAt: now,
+        },
+        eventType: "incident_resolved",
+        eventTimestamp: now,
+      },
+      adminClient,
+    );
+  } catch (queueError) {
+    console.error("Failed to queue incident_resolved alerts", queueError);
+  }
 
   return getIncidentById(context.userId, incident.id, incident.organizationId, adminClient);
 }

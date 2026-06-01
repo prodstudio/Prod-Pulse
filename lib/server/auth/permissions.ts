@@ -17,6 +17,10 @@ export function canManageOperationalConfig(role: OrgRole) {
   return hasRoleAtLeast(role, "admin");
 }
 
+export function canManageAlerts(role: OrgRole) {
+  return hasRoleAtLeast(role, "admin");
+}
+
 export function canManageIncidents(role: OrgRole) {
   return hasRoleAtLeast(role, "responder");
 }

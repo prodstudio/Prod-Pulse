@@ -44,13 +44,21 @@ export type ActiveOrganizationContext = {
 
 type AdminLike = ReturnType<typeof createSupabaseAdminClient>;
 
-type ResourceKind = "app" | "environment" | "monitor" | "incident";
+type ResourceKind =
+  | "app"
+  | "environment"
+  | "monitor"
+  | "incident"
+  | "alert_rule"
+  | "notification_channel";
 
 const RESOURCE_TABLES: Record<ResourceKind, string> = {
   app: "monitored_apps",
   environment: "app_environments",
   monitor: "monitors",
   incident: "incidents",
+  alert_rule: "alert_rules",
+  notification_channel: "notification_channels",
 };
 
 const RESOURCE_SELECTS: Record<ResourceKind, string> = {
@@ -58,6 +66,8 @@ const RESOURCE_SELECTS: Record<ResourceKind, string> = {
   environment: "id, organization_id, app_id, environment_id, name, slug",
   monitor: "id, organization_id, app_id, environment_id, name, slug",
   incident: "id, organization_id, app_id, environment_id, monitor_id",
+  alert_rule: "id, organization_id, app_id, monitor_id, name",
+  notification_channel: "id, organization_id, name, type",
 };
 
 function normalizeMembership(row: MembershipRecord): ActiveOrganizationContext | null {

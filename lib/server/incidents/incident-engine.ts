@@ -1,6 +1,7 @@
 import "server-only";
 
 import { mapPostgresError } from "@/lib/server/api/errors";
+import { queueIncidentAlertDeliveries } from "@/lib/server/alerts/alert-engine";
 import { writeAuditLog } from "@/lib/server/audit/audit-log";
 import { sanitizeIncidentForAudit, sanitizeIncidentText, sanitizeIncidentTitle, type RawIncidentRecord } from "@/lib/server/incidents/incident-sanitization";
 import type { SafeMonitorResult } from "@/lib/server/monitoring/result-sanitization";
@@ -301,6 +302,20 @@ export async function processScheduledIncidentState(
         },
       });
 
+      try {
+        await queueIncidentAlertDeliveries(
+          {
+            incident,
+            eventType: "incident_created",
+            eventTimestamp: result.checkedAt,
+            suppressedByMaintenanceWindowId,
+          },
+          adminClient,
+        );
+      } catch (queueError) {
+        console.error("Failed to queue incident_created alerts", queueError);
+      }
+
       return {
         created: true,
         updated: false,
@@ -352,6 +367,32 @@ export async function processScheduledIncidentState(
           : "Incident updated by the scheduled incident engine.",
         adminClient,
       );
+
+      if (nextStatus === "open") {
+        try {
+          await queueIncidentAlertDeliveries(
+            {
+              incident: {
+                ...unresolvedIncident,
+                status: nextStatus,
+                summary: nextSummary,
+                title: nextTitle,
+                severity: nextSeverity,
+                createdFromResultId: result.id,
+                lastStateChangeAt: result.checkedAt,
+                openedAt: unresolvedIncident.openedAt ?? result.checkedAt,
+                updatedAt: result.checkedAt,
+              },
+              eventType: "incident_updated",
+              eventTimestamp: result.checkedAt,
+              suppressedByMaintenanceWindowId,
+            },
+            adminClient,
+          );
+        } catch (queueError) {
+          console.error("Failed to queue incident_updated alerts", queueError);
+        }
+      }
     }
 
     return {
@@ -439,6 +480,28 @@ export async function processScheduledIncidentState(
       },
     },
   });
+
+  try {
+    await queueIncidentAlertDeliveries(
+      {
+        incident: {
+          ...unresolvedIncident,
+          status: nextStatus,
+          recoveredAt: result.checkedAt,
+          resolvedAt:
+            nextStatus === "resolved" ? result.checkedAt : unresolvedIncident.resolvedAt,
+          lastStateChangeAt: result.checkedAt,
+          updatedAt: result.checkedAt,
+        },
+        eventType: nextStatus === "resolved" ? "incident_resolved" : "incident_recovered",
+        eventTimestamp: result.checkedAt,
+        suppressedByMaintenanceWindowId,
+      },
+      adminClient,
+    );
+  } catch (queueError) {
+    console.error("Failed to queue recovery/resolution alerts", queueError);
+  }
 
   return {
     created: false,

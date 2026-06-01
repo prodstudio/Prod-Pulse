@@ -6,6 +6,10 @@
     {
       "path": "/api/cron/monitor-runner",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/alert-runner",
+      "schedule": "* * * * *"
     }
   ]
 }

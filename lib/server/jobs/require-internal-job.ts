@@ -15,6 +15,14 @@ export function isMonitorRunnerEnabled() {
   return process.env.MONITOR_RUNNER_ENABLED === "true";
 }
 
+export function isAlertRunnerEnabled() {
+  return process.env.ALERT_RUNNER_ENABLED === "true";
+}
+
+export function isSlackAlertsEnabled() {
+  return process.env.SLACK_ALERTS_ENABLED === "true";
+}
+
 export function requireInternalJob(request: Request) {
   const expectedSecret = process.env.CRON_SECRET;
   const providedSecret =
