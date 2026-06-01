@@ -4,6 +4,7 @@ import {
   canManageAlerts,
   canManageHeartbeats,
   canManageIncidents,
+  canManageStatusPages,
   canRunMonitors,
   canManageOperationalConfig,
   canReadOrganization,
@@ -31,6 +32,13 @@ describe("organization permissions", () => {
     expect(canManageHeartbeats("responder")).toBe(false);
     expect(canManageHeartbeats("admin")).toBe(true);
     expect(canManageHeartbeats("owner")).toBe(true);
+  });
+
+  it("viewer and responder cannot manage status pages while admin and owner can", () => {
+    expect(canManageStatusPages("viewer")).toBe(false);
+    expect(canManageStatusPages("responder")).toBe(false);
+    expect(canManageStatusPages("admin")).toBe(true);
+    expect(canManageStatusPages("owner")).toBe(true);
   });
 
   it("responder, admin, and owner can run monitors", () => {

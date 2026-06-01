@@ -7,7 +7,7 @@ const navItems = [
   { label: "Incidents", href: "/incidents", active: true },
   { label: "Alerts", href: "/alerts/channels", active: true },
   { label: "Heartbeats", href: "/heartbeats", active: true },
-  { label: "Status Preview", href: "#", active: false },
+  { label: "Status Preview", href: "/status-pages", active: true },
   { label: "Settings", href: "#", active: false },
 ];
 
@@ -44,7 +44,7 @@ export function AppSidebar() {
         )}
       </nav>
       <div className="border-t border-sidebar-border px-6 py-4 text-xs uppercase tracking-[0.18em] text-sidebar-foreground/50">
-        Phase 7 heartbeat monitoring
+        Phase 8 internal status preview
       </div>
     </aside>
   );

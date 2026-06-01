@@ -50,6 +50,8 @@ type ResourceKind =
   | "monitor"
   | "heartbeat"
   | "incident"
+  | "status_page"
+  | "status_page_component"
   | "alert_rule"
   | "notification_channel";
 
@@ -59,6 +61,8 @@ const RESOURCE_TABLES: Record<ResourceKind, string> = {
   monitor: "monitors",
   heartbeat: "heartbeats",
   incident: "incidents",
+  status_page: "status_pages",
+  status_page_component: "status_page_components",
   alert_rule: "alert_rules",
   notification_channel: "notification_channels",
 };
@@ -69,6 +73,9 @@ const RESOURCE_SELECTS: Record<ResourceKind, string> = {
   monitor: "id, organization_id, app_id, environment_id, name, slug",
   heartbeat: "id, organization_id, app_id, environment_id, monitor_id, name, slug",
   incident: "id, organization_id, app_id, environment_id, monitor_id",
+  status_page: "id, organization_id, name, slug",
+  status_page_component:
+    "id, organization_id, status_page_id, monitored_app_id, environment_id, monitor_id, display_name",
   alert_rule: "id, organization_id, app_id, monitor_id, name",
   notification_channel: "id, organization_id, name, type",
 };
@@ -218,6 +225,8 @@ export async function requireResourceAccess(
       app_id?: string | null;
       environment_id?: string | null;
       monitor_id?: string | null;
+      status_page_id?: string | null;
+      monitored_app_id?: string | null;
       name?: string | null;
       slug?: string | null;
     },
