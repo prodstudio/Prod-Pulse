@@ -117,7 +117,7 @@ export const updateMonitorSchema = z
 export type CreateMonitorInput = z.infer<typeof createMonitorSchema>;
 export type UpdateMonitorInput = z.infer<typeof updateMonitorSchema>;
 
-type ServiceContext = {
+export type MonitorServiceContext = {
   userId: string;
   organization: ActiveOrganizationContext["organization"];
   membership: ActiveOrganizationContext["membership"];
@@ -244,6 +244,15 @@ export async function getMonitorById(
   return toSafeMonitorDetail(rawMonitor);
 }
 
+export async function getRawMonitorForExecution(
+  userId: string,
+  monitorId: string,
+  organizationId?: string,
+  adminClient: AdminLike = createSupabaseAdminClient(),
+) {
+  return getRawMonitorById(userId, monitorId, organizationId, adminClient);
+}
+
 async function assertAppAndEnvironmentAccess(
   userId: string,
   organizationId: string,
@@ -275,7 +284,7 @@ async function assertAppAndEnvironmentAccess(
 }
 
 export async function createMonitor(
-  context: ServiceContext,
+  context: MonitorServiceContext,
   input: CreateMonitorInput,
   adminClient: AdminLike = createSupabaseAdminClient(),
 ) {
@@ -340,7 +349,7 @@ export async function createMonitor(
 }
 
 export async function updateMonitor(
-  context: ServiceContext,
+  context: MonitorServiceContext,
   monitorId: string,
   input: UpdateMonitorInput,
   adminClient: AdminLike = createSupabaseAdminClient(),
@@ -454,7 +463,7 @@ export async function updateMonitor(
 }
 
 export async function deleteMonitor(
-  context: ServiceContext,
+  context: MonitorServiceContext,
   monitorId: string,
   adminClient: AdminLike = createSupabaseAdminClient(),
 ) {

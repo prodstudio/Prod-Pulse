@@ -21,6 +21,10 @@ export function canManageIncidents(role: OrgRole) {
   return hasRoleAtLeast(role, "responder");
 }
 
+export function canRunMonitors(role: OrgRole) {
+  return hasRoleAtLeast(role, "responder");
+}
+
 export function canReadOrganization(role: OrgRole) {
   return ORG_ROLES.includes(role);
 }

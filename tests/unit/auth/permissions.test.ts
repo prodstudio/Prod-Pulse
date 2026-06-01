@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canRunMonitors,
   canManageOperationalConfig,
   canReadOrganization,
   hasRoleAtLeast,
@@ -13,6 +14,13 @@ describe("organization permissions", () => {
 
   it("admin can create and manage apps", () => {
     expect(canManageOperationalConfig("admin")).toBe(true);
+  });
+
+  it("responder, admin, and owner can run monitors", () => {
+    expect(canRunMonitors("viewer")).toBe(false);
+    expect(canRunMonitors("responder")).toBe(true);
+    expect(canRunMonitors("admin")).toBe(true);
+    expect(canRunMonitors("owner")).toBe(true);
   });
 
   it("role ladder remains ordered", () => {
