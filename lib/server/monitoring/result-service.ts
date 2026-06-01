@@ -22,6 +22,18 @@ type PersistMonitorExecutionInput = {
   execution: MonitorExecutionResult;
 };
 
+type PersistExecutionOptions = {
+  triggerSource: "manual" | "scheduled" | "heartbeat" | "retry";
+  runnerRunId?: string | null;
+  idempotencyKey?: string | null;
+  suppressedByMaintenanceWindowId?: string | null;
+};
+
+type PersistExecutionResult = {
+  result: SafeMonitorResult;
+  duplicate: boolean;
+};
+
 type ListMonitorResultsOptions = {
   limit?: number;
 };
@@ -85,10 +97,32 @@ export function buildMonitorStatePatch(_monitor: RawMonitorRecord, execution: Mo
   return basePatch;
 }
 
-export async function persistMonitorExecutionResult(
-  input: PersistMonitorExecutionInput,
-  adminClient: AdminLike = createSupabaseAdminClient(),
+async function getExistingResultByIdempotencyKey(
+  organizationId: string,
+  idempotencyKey: string,
+  adminClient: AdminLike,
 ): Promise<SafeMonitorResult> {
+  const { data, error } = await adminClient
+    .from("monitor_results")
+    .select(
+      "id, status, trigger_source, checked_at, duration_ms, http_status, error_code, error_message, response_excerpt, assertion_results, metadata",
+    )
+    .eq("organization_id", organizationId)
+    .eq("idempotency_key", idempotencyKey)
+    .single();
+
+  if (error) {
+    throw mapPostgresError(error);
+  }
+
+  return toSafeMonitorResult(mapRawMonitorResultRow(data as RawMonitorResultRow));
+}
+
+async function persistExecutionResult(
+  input: PersistMonitorExecutionInput,
+  options: PersistExecutionOptions,
+  adminClient: AdminLike,
+): Promise<PersistExecutionResult> {
   const safeAssertionResults = sanitizeAssertionResults(input.execution.assertionResults);
   const safeMetadata = sanitizeResultMetadata(input.execution.metadata);
 
@@ -99,8 +133,10 @@ export async function persistMonitorExecutionResult(
       monitor_id: input.monitor.id,
       app_id: input.monitor.appId,
       environment_id: input.monitor.environmentId,
-      trigger_source: "manual",
+      runner_run_id: options.runnerRunId ?? null,
+      trigger_source: options.triggerSource,
       status: input.execution.status,
+      idempotency_key: options.idempotencyKey ?? null,
       checked_at: input.execution.checkedAt,
       started_at: input.execution.startedAt,
       finished_at: input.execution.finishedAt,
@@ -111,6 +147,7 @@ export async function persistMonitorExecutionResult(
       response_excerpt: sanitizeStoredResponseExcerpt(input.execution.responseExcerpt),
       assertion_results: safeAssertionResults,
       metadata: safeMetadata,
+      suppressed_by_maintenance_window_id: options.suppressedByMaintenanceWindowId ?? null,
     })
     .select(
       "id, status, trigger_source, checked_at, duration_ms, http_status, error_code, error_message, response_excerpt, assertion_results, metadata",
@@ -118,6 +155,17 @@ export async function persistMonitorExecutionResult(
     .single();
 
   if (error) {
+    if (error.code === "23505" && options.idempotencyKey) {
+      return {
+        result: await getExistingResultByIdempotencyKey(
+          input.monitor.organizationId,
+          options.idempotencyKey,
+          adminClient,
+        ),
+        duplicate: true,
+      };
+    }
+
     throw mapPostgresError(error);
   }
 
@@ -142,6 +190,24 @@ export async function persistMonitorExecutionResult(
     }
   }
 
+  return {
+    result: toSafeMonitorResult(mapRawMonitorResultRow(data as RawMonitorResultRow)),
+    duplicate: false,
+  };
+}
+
+export async function persistMonitorExecutionResult(
+  input: PersistMonitorExecutionInput,
+  adminClient: AdminLike = createSupabaseAdminClient(),
+): Promise<SafeMonitorResult> {
+  const persisted = await persistExecutionResult(
+    input,
+    {
+      triggerSource: "manual",
+    },
+    adminClient,
+  );
+
   const { error: monitorUpdateError } = await adminClient
     .from("monitors")
     .update(buildMonitorStatePatch(input.monitor, input.execution))
@@ -152,7 +218,22 @@ export async function persistMonitorExecutionResult(
     throw mapPostgresError(monitorUpdateError);
   }
 
-  return toSafeMonitorResult(mapRawMonitorResultRow(data as RawMonitorResultRow));
+  return persisted.result;
+}
+
+export async function persistScheduledMonitorExecutionResult(
+  input: PersistMonitorExecutionInput,
+  options: Omit<PersistExecutionOptions, "triggerSource">,
+  adminClient: AdminLike = createSupabaseAdminClient(),
+): Promise<PersistExecutionResult> {
+  return persistExecutionResult(
+    input,
+    {
+      ...options,
+      triggerSource: "scheduled",
+    },
+    adminClient,
+  );
 }
 
 export async function listMonitorResultsForMonitor(

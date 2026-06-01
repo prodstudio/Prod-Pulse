@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildMonitorStatePatch,
   persistMonitorExecutionResult,
+  persistScheduledMonitorExecutionResult,
 } from "@/lib/server/monitoring/result-service";
 import type { MonitorExecutionResult } from "@/lib/server/monitoring/evaluate";
 import type { RawMonitorRecord } from "@/lib/server/monitors/monitor-sanitization";
@@ -164,6 +165,79 @@ describe("result service", () => {
           status: "success",
         }),
       ]),
+    );
+  });
+
+  it("reuses sanitization for scheduled results", async () => {
+    const resultsChain = createChain({
+      data: {
+        id: "result-2",
+        status: "failure",
+        trigger_source: "scheduled",
+        checked_at: "2026-06-01T00:00:00Z",
+        duration_ms: 1000,
+        http_status: 503,
+        error_code: "HTTP_503",
+        error_message: "The endpoint responded with HTTP 503.",
+        response_excerpt: "Authorization=[redacted]",
+        assertion_results: {},
+        metadata: {
+          note: "Health endpoint request failed",
+        },
+      },
+    });
+
+    const adminClient = {
+      from: vi.fn((table: string) => {
+        if (table === "monitor_results") {
+          return resultsChain;
+        }
+
+        if (table === "monitor_result_attempts") {
+          return {
+            insert: vi.fn().mockResolvedValue({ error: null }),
+          };
+        }
+
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    };
+
+    await persistScheduledMonitorExecutionResult(
+      {
+        actorUserId: "system",
+        monitor,
+        execution: {
+          ...execution,
+          status: "failure",
+          httpStatus: 503,
+          errorCode: "HTTP_503",
+          errorMessage: "Authorization=Bearer secret",
+          responseExcerpt:
+            '{"webhookUrl":"https://hooks.slack.com/services/T000/B000/secret","databaseUrl":"postgres://user:pass@db.internal:5432/prod"}',
+          metadata: {
+            token: "secret-token",
+          },
+        },
+      },
+      {
+        runnerRunId: "run-1",
+        idempotencyKey: "org-1:monitor-1:2026-06-01T00:00:00Z",
+      },
+      adminClient as never,
+    );
+
+    expect(resultsChain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger_source: "scheduled",
+        runner_run_id: "run-1",
+        idempotency_key: "org-1:monitor-1:2026-06-01T00:00:00Z",
+        error_message: "Authorization=[redacted]",
+        response_excerpt: expect.not.stringContaining("hooks.slack.com/services/T000/B000/secret"),
+        metadata: {
+          token: "[redacted]",
+        },
+      }),
     );
   });
 });

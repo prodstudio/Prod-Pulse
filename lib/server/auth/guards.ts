@@ -66,11 +66,3 @@ export async function requireAppSession() {
     organizationContext,
   };
 }
-
-export function requireInternalJob(headerValue: string | null) {
-  const expectedSecret = process.env.CRON_SECRET;
-
-  if (!expectedSecret || headerValue !== expectedSecret) {
-    throw new Error("Unauthorized internal job execution.");
-  }
-}
