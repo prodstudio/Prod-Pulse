@@ -14,6 +14,9 @@ export default async function CiexIntegrationPage() {
   }
 
   const canManage = canManageOperationalConfig(session.organizationContext.membership.role);
+  const receiverPath = "/api/integrations/ciex/inbound";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") ?? null;
+  const receiverUrl = baseUrl ? `${baseUrl}${receiverPath}` : null;
   const integration = canManage
     ? await getCiexIntegrationConfigForOrganization(
         session.user.id,
@@ -27,9 +30,9 @@ export default async function CiexIntegrationPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
           Integrations
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight">CIEX inbound configuration</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">CIEX webhook receiver</h1>
         <p className="text-sm text-muted-foreground">
-          Manage the internal shared secret used for CIEX-to-Prod-Pulse issue ingestion.
+          Configure the CIEX to Prod Pulse webhook receiver used for ticket event delivery.
         </p>
       </section>
 
@@ -38,7 +41,11 @@ export default async function CiexIntegrationPage() {
           This page requires admin or owner access.
         </div>
       ) : (
-        <CiexConfigPanel initialConfig={integration} />
+        <CiexConfigPanel
+          initialConfig={integration}
+          receiverPath={receiverPath}
+          receiverUrl={receiverUrl}
+        />
       )}
     </div>
   );

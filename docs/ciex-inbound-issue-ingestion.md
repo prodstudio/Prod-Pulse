@@ -1,10 +1,10 @@
-# CIEX inbound issue ingestion foundation
+# CIEX outbound webhook receiver foundation
 
-Phase 12 adds the first inbound CIEX foundation for Prod Pulse.
+Phase 12 adds the first CIEX outbound webhook receiver foundation for Prod Pulse.
 
 This phase is intentionally narrow:
 
-- inbound ingestion only
+- inbound webhook ingestion only
 - manual incident linking remains the control point
 - no bidirectional sync
 - no automatic CIEX ticket updates
@@ -15,7 +15,24 @@ This phase is intentionally narrow:
 
 `POST /api/integrations/ciex/inbound`
 
-This is an internal integration endpoint intended for CIEX-to-Prod-Pulse delivery.
+This is an internal integration endpoint intended for CIEX to Prod Pulse webhook delivery.
+
+## Architecture
+
+The intended flow is:
+
+1. Customer app embeds the CIEX widget
+2. CIEX widget creates or updates a CIEX ticket
+3. CIEX sends an outbound webhook event to Prod Pulse
+4. Prod Pulse stores a normalized external issue
+5. Prod Pulse suggests or allows manual incident linking
+
+Prod Pulse is not part of the CIEX widget token flow. Prod Pulse does not call
+`POST /api/support/token`, and it does not embed the CIEX widget.
+
+The CIEX widget/token integration remains for customer-facing applications that want to embed
+support directly. Prod Pulse only receives ticket events after CIEX has created or updated the
+ticket.
 
 ## Authentication contract
 
@@ -32,7 +49,8 @@ Prod Pulse does not trust `organization_id` from the payload. The organization i
 
 ## Minimal provisioning
 
-Phase 12 does not add an integrations dashboard. CIEX inbound integrations must be provisioned manually in the database for now.
+Phase 12 does not add an integrations dashboard. CIEX webhook integrations must be provisioned
+manually in the database for now.
 
 Recommended secret hash command:
 
@@ -53,7 +71,7 @@ Never store the raw shared secret in plaintext columns.
 
 ## Payload shape
 
-Current accepted payload:
+Current accepted webhook payload:
 
 ```json
 {

@@ -2,6 +2,21 @@
 
 This phase adds the internal-only foundation for linking technical incidents in Prod Pulse to external customer-reported issues such as CIEX tickets.
 
+## CIEX architecture note
+
+Prod Pulse links to CIEX issues after CIEX has already created the ticket.
+
+The intended end-to-end flow is:
+
+1. Customer app uses the CIEX widget and CIEX token flow
+2. CIEX creates or updates the ticket inside CIEX
+3. CIEX sends an outbound webhook to Prod Pulse at `POST /api/integrations/ciex/inbound`
+4. Prod Pulse stores the normalized external issue reference
+5. Prod Pulse suggests or allows manual incident linkage
+
+Prod Pulse does not participate in the CIEX widget token exchange and does not call
+`/api/support/token`.
+
 ## Current scope
 
 This implementation is intentionally narrow:

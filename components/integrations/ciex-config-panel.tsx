@@ -7,6 +7,8 @@ import type { SafeCiexIntegrationConfig } from "@/lib/integrations/ciex-config";
 
 type Props = {
   initialConfig: SafeCiexIntegrationConfig | null;
+  receiverPath: string;
+  receiverUrl: string | null;
 };
 
 type MutationResponse = {
@@ -46,7 +48,7 @@ function formatTimestamp(value: string | null) {
   }).format(new Date(value));
 }
 
-export function CiexConfigPanel({ initialConfig }: Props) {
+export function CiexConfigPanel({ initialConfig, receiverPath, receiverUrl }: Props) {
   const [config, setConfig] = useState<SafeCiexIntegrationConfig | null>(initialConfig);
   const [plaintextSecret, setPlaintextSecret] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -78,10 +80,33 @@ export function CiexConfigPanel({ initialConfig }: Props) {
 
   return (
     <section className="rounded-lg border border-border bg-card p-5">
-      <h2 className="text-lg font-semibold tracking-tight">CIEX inbound integration</h2>
+      <h2 className="text-lg font-semibold tracking-tight">CIEX to Prod Pulse webhook</h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        Configure the shared secret used by CIEX to send normalized ticket updates into Prod Pulse.
+        Configure the shared secret CIEX uses when sending outbound ticket events to Prod Pulse.
       </p>
+
+      <div className="mt-5 rounded-md border border-border bg-background px-4 py-4 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">Receiver setup</p>
+        <p className="mt-2">
+          Use this endpoint and key inside a CIEX outbound webhook integration. CIEX should send
+          events such as <span className="font-mono text-xs">ticket.created</span>,{" "}
+          <span className="font-mono text-xs">ticket.updated</span>, and{" "}
+          <span className="font-mono text-xs">ticket.closed</span> to Prod Pulse.
+        </p>
+        <div className="mt-3 rounded border border-border px-3 py-2 font-mono text-xs text-foreground">
+          POST {receiverUrl ?? receiverPath}
+        </div>
+        {!receiverUrl ? (
+          <p className="mt-2 text-xs">
+            Prepend your production Prod Pulse host to this path when configuring CIEX.
+          </p>
+        ) : null}
+        <p className="mt-3">
+          Prod Pulse does not call <span className="font-mono text-xs">/api/support/token</span>{" "}
+          or use the CIEX widget token flow. That CIEX widget setup remains for embedding support
+          in customer-facing apps, not for Prod Pulse ingestion.
+        </p>
+      </div>
 
       {error ? (
         <div className="mt-5 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -132,7 +157,7 @@ export function CiexConfigPanel({ initialConfig }: Props) {
         </div>
       ) : (
         <div className="mt-6 rounded-md border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
-          No CIEX inbound integration is configured for this organization yet.
+          No CIEX webhook receiver key is configured for this organization yet.
         </div>
       )}
 
@@ -143,7 +168,7 @@ export function CiexConfigPanel({ initialConfig }: Props) {
             onClick={() => runAction("create")}
             disabled={pendingAction !== null}
           >
-            {pendingAction === "create" ? "Creating..." : "Create integration"}
+            {pendingAction === "create" ? "Creating..." : "Create webhook key"}
           </Button>
         ) : (
           <>
@@ -171,7 +196,7 @@ export function CiexConfigPanel({ initialConfig }: Props) {
               onClick={() => runAction("rotate")}
               disabled={pendingAction !== null}
             >
-              {pendingAction === "rotate" ? "Rotating..." : "Rotate inbound key"}
+              {pendingAction === "rotate" ? "Rotating..." : "Rotate webhook key"}
             </Button>
           </>
         )}
