@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { ingestCiexInboundIssue } from "@/lib/server/integrations/ciex-inbound-service";
@@ -69,6 +71,7 @@ function createScopedLookupRow(id: string, appId: string | null, environmentId: 
 describe("ciex inbound service", () => {
   it("creates a normalized external issue from a valid inbound payload", async () => {
     let externalIssueCalls = 0;
+    const secret = "ciex-secret";
 
     const adminClient = {
       from: vi.fn((table: string) => {
@@ -139,7 +142,7 @@ describe("ciex inbound service", () => {
     };
 
     const result = await ingestCiexInboundIssue(
-      createRequest("ciex-secret", {
+      createRequest(secret, {
         ticket: {
           externalId: "ticket-123",
           externalKey: "CIEX-123",
@@ -173,6 +176,72 @@ describe("ciex inbound service", () => {
     expect(result.issue.sourceKind).toBe("ciex");
     expect(result.issue.sourceUrl).toBeNull();
     expect(result.suggestedIncidentIds).toEqual([]);
+    expect(adminClient.from).toHaveBeenCalledWith("integrations");
+  });
+
+  it("accepts an inbound key by matching its stored sha256 hash", async () => {
+    const secret = "generated-inbound-secret";
+    const secretHash = createHash("sha256").update(secret).digest("hex");
+
+    const adminClient = {
+      from: vi.fn((table: string) => {
+        if (table === "integrations") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: createIntegrationRow({ inbound_key_hash: secretHash }),
+              error: null,
+            }),
+            update: vi.fn().mockReturnThis(),
+          };
+        }
+
+        if (table === "external_issues") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            insert: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: createIssueRow(),
+              error: null,
+            }),
+          };
+        }
+
+        if (table === "incidents") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            neq: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+          };
+        }
+
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    };
+
+    const result = await ingestCiexInboundIssue(
+      createRequest(secret, {
+        ticket: {
+          externalId: "ticket-123",
+          title: "Customer cannot sign in",
+        },
+      }),
+      {
+        ticket: {
+          externalId: "ticket-123",
+          title: "Customer cannot sign in",
+        },
+      },
+      adminClient as never,
+    );
+
+    expect(result.created).toBe(true);
+    expect(result.issue.sourceKind).toBe("ciex");
   });
 
   it("updates an existing normalized issue instead of creating a duplicate", async () => {

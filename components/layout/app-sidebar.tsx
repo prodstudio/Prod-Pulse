@@ -6,6 +6,7 @@ const navItems = [
   { label: "Monitors", href: "/monitors", active: true },
   { label: "Incidents", href: "/incidents", active: true },
   { label: "Alerts", href: "/alerts/channels", active: true },
+  { label: "Integrations", href: "/integrations/ciex", active: true },
   { label: "Heartbeats", href: "/heartbeats", active: true },
   { label: "Status Preview", href: "/status-pages", active: true },
   { label: "Settings", href: "#", active: false },
