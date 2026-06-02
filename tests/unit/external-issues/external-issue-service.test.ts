@@ -4,6 +4,7 @@ import {
   createAndLinkExternalIssueReference,
   linkExternalIssueToIncident,
   listLinkedExternalIssuesForIncident,
+  listSuggestedExternalIssuesForIncident,
   unlinkExternalIssueFromIncident,
   upsertExternalIssueReference,
 } from "@/lib/server/external-issues/external-issue-service";
@@ -339,5 +340,78 @@ describe("external issue service", () => {
       adminClient as never,
     );
     expect(unlinked).toHaveLength(1);
+  });
+
+  it("returns deterministic CIEX suggestions for an incident", async () => {
+    const incidentExternalIssuesChain = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      then(resolve: (value: { data: Array<{ external_issue_id: string }>; error: null }) => unknown) {
+        return Promise.resolve(resolve({ data: [{ external_issue_id: "issue-linked-already" }], error: null }));
+      },
+    };
+
+    const adminClient = {
+      from: vi.fn((table: string) => {
+        if (table === "memberships") {
+          return createMembershipChain();
+        }
+        if (table === "incidents") {
+          return createIncidentResourceChain();
+        }
+        if (table === "incident_external_issues") {
+          return incidentExternalIssuesChain;
+        }
+        if (table === "external_issues") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockResolvedValue({
+              data: [
+                createExternalIssueRow({
+                  id: "issue-monitor-match",
+                  related_app_id: "app-1",
+                  related_environment_id: "env-1",
+                  related_monitor_id: "monitor-1",
+                }),
+                createExternalIssueRow({
+                  id: "issue-linked-already",
+                  related_app_id: "app-1",
+                  related_environment_id: "env-1",
+                  related_monitor_id: "monitor-1",
+                }),
+                createExternalIssueRow({
+                  id: "issue-app-only",
+                  related_app_id: "app-1",
+                  related_environment_id: null,
+                  related_monitor_id: null,
+                }),
+                createExternalIssueRow({
+                  id: "issue-other-monitor",
+                  related_app_id: "app-1",
+                  related_environment_id: "env-1",
+                  related_monitor_id: "monitor-2",
+                }),
+              ],
+              error: null,
+            }),
+          };
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    };
+
+    const suggestions = await listSuggestedExternalIssuesForIncident(
+      "user-1",
+      "incident-1",
+      "org-1",
+      adminClient as never,
+    );
+
+    expect(suggestions.map((issue) => issue.id)).toEqual([
+      "issue-monitor-match",
+      "issue-app-only",
+    ]);
   });
 });

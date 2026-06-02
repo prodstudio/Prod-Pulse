@@ -39,6 +39,13 @@ export type RawExternalIssueRecord = {
   customerReference: string | null;
   summary: string | null;
   createdBy: string | null;
+  firstSeenAt?: string | null;
+  lastSyncedAt?: string | null;
+  sourceCreatedAt?: string | null;
+  sourceUpdatedAt?: string | null;
+  relatedAppId?: string | null;
+  relatedEnvironmentId?: string | null;
+  relatedMonitorId?: string | null;
   createdAt: string;
   updatedAt: string;
   linkedAt?: string | null;

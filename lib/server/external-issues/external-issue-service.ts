@@ -75,6 +75,13 @@ function mapExternalIssueRow(row: ExternalIssueLookupRow): RawExternalIssueRecor
     customerReference: (row.customer_reference as string | null) ?? null,
     summary: (row.summary as string | null) ?? null,
     createdBy: (row.created_by as string | null) ?? null,
+    firstSeenAt: (row.first_seen_at as string | null) ?? null,
+    lastSyncedAt: (row.last_synced_at as string | null) ?? null,
+    sourceCreatedAt: (row.source_created_at as string | null) ?? null,
+    sourceUpdatedAt: (row.source_updated_at as string | null) ?? null,
+    relatedAppId: (row.related_app_id as string | null) ?? null,
+    relatedEnvironmentId: (row.related_environment_id as string | null) ?? null,
+    relatedMonitorId: (row.related_monitor_id as string | null) ?? null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
     linkedAt: (row.linked_at as string | null) ?? null,
@@ -99,6 +106,13 @@ const EXTERNAL_ISSUE_SELECT = [
   "customer_reference",
   "summary",
   "created_by",
+  "first_seen_at",
+  "last_synced_at",
+  "source_created_at",
+  "source_updated_at",
+  "related_app_id",
+  "related_environment_id",
+  "related_monitor_id",
   "created_at",
   "updated_at",
 ].join(", ");
@@ -482,4 +496,60 @@ export async function updateIncidentCustomerImpact(
     },
     request: context.request,
   });
+}
+
+export async function listSuggestedExternalIssuesForIncident(
+  userId: string,
+  incidentId: string,
+  organizationId?: string,
+  adminClient: AdminLike = createSupabaseAdminClient(),
+): Promise<SafeExternalIssue[]> {
+  const { resource: incident } = await getIncidentRecord(userId, incidentId, organizationId, adminClient);
+
+  const { data: linkedRows, error: linkedError } = await adminClient
+    .from("incident_external_issues")
+    .select("external_issue_id")
+    .eq("organization_id", incident.organization_id)
+    .eq("incident_id", incident.id);
+
+  if (linkedError) {
+    throw mapPostgresError(linkedError);
+  }
+
+  const linkedIds = new Set(
+    (linkedRows ?? []).map((row) => String((row as Record<string, unknown>).external_issue_id)),
+  );
+
+  const { data, error } = await adminClient
+    .from("external_issues")
+    .select(EXTERNAL_ISSUE_SELECT)
+    .eq("organization_id", incident.organization_id)
+    .eq("source_kind", "ciex")
+    .eq("related_app_id", incident.app_id)
+    .order("last_synced_at", { ascending: false })
+    .limit(25);
+
+  if (error) {
+    throw mapPostgresError(error);
+  }
+
+  return ((data ?? []) as unknown[])
+    .map((row) => mapExternalIssueRow(toExternalIssueLookupRow(row)))
+    .filter((issue) => {
+      if (linkedIds.has(issue.id)) {
+        return false;
+      }
+
+      if (issue.relatedMonitorId) {
+        return issue.relatedMonitorId === ((incident.monitor_id as string | null) ?? null);
+      }
+
+      if (issue.relatedEnvironmentId) {
+        return issue.relatedEnvironmentId === ((incident.environment_id as string | null) ?? null);
+      }
+
+      return issue.relatedAppId === ((incident.app_id as string | null) ?? null);
+    })
+    .slice(0, 10)
+    .map((issue) => toSafeExternalIssue(issue));
 }

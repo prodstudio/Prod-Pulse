@@ -15,6 +15,8 @@ import { canManageIncidents } from "@/lib/server/auth/permissions";
 import {
   createAndLinkExternalIssueReference,
   createExternalIssueReferenceSchema,
+  linkExternalIssueToIncident,
+  listSuggestedExternalIssuesForIncident,
   unlinkExternalIssueFromIncident,
   updateIncidentCustomerImpact,
   updateIncidentCustomerImpactSchema,
@@ -82,7 +84,7 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
   }
 
   const { incidentId } = await params;
-  const [incident, statusParams] = await Promise.all([
+  const [incident, suggestedExternalIssues, statusParams] = await Promise.all([
     getIncidentById(
       session.user.id,
       incidentId,
@@ -94,6 +96,11 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
 
       throw error;
     }),
+    listSuggestedExternalIssuesForIncident(
+      session.user.id,
+      incidentId,
+      session.organizationContext.organization.id,
+    ),
     searchParams,
   ]);
 
@@ -308,6 +315,45 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
     }
   }
 
+  async function linkSuggestedExternalIssueAction(formData: FormData) {
+    "use server";
+
+    try {
+      const user = await requireUser();
+      const organizationContext = await requireOrgMembership(user.id);
+
+      if (!canManageIncidents(organizationContext.membership.role)) {
+        throw new ApiError(
+          403,
+          "ORG_ROLE_REQUIRED",
+          "This action requires responder, admin, or owner access.",
+        );
+      }
+
+      const externalIssueId = formData.get("externalIssueId");
+
+      if (!externalIssueId) {
+        throw new ApiError(400, "VALIDATION_ERROR", "Request validation failed.");
+      }
+
+      await linkExternalIssueToIncident(
+        {
+          userId: user.id,
+          organization: organizationContext.organization,
+          membership: organizationContext.membership,
+        },
+        incidentId,
+        String(externalIssueId),
+      );
+
+      revalidatePath("/incidents");
+      revalidatePath(`/incidents/${incidentId}`);
+      redirect(`/incidents/${incidentId}?status=external_issue_linked`);
+    } catch (error) {
+      redirect(`/incidents/${incidentId}?error=${getActionErrorRedirectValue(error)}`);
+    }
+  }
+
   async function updateCustomerImpactAction(formData: FormData) {
     "use server";
 
@@ -515,6 +561,47 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
                 ))}
               </ul>
             )}
+            {suggestedExternalIssues.length > 0 ? (
+              <div className="mt-6 border-t border-border pt-6">
+                <h3 className="text-sm font-semibold tracking-tight">Suggested CIEX tickets</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Deterministic matches based on imported app, environment, or monitor references.
+                </p>
+                <ul className="mt-4 space-y-3">
+                  {suggestedExternalIssues.map((issue) => (
+                    <li key={issue.id} className="rounded-md border border-border px-4 py-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <p className="font-medium">
+                            {issue.externalKey ?? issue.externalId} · {issue.title}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {issue.status ? `${issue.status}` : "No status"}
+                            {issue.priority ? ` · ${issue.priority}` : ""}
+                          </p>
+                        </div>
+                        {canMutate && incident.status !== "resolved" ? (
+                          <form action={linkSuggestedExternalIssueAction}>
+                            <input type="hidden" name="externalIssueId" value={issue.id} />
+                            <Button type="submit" variant="secondary" size="sm">
+                              Link ticket
+                            </Button>
+                          </form>
+                        ) : null}
+                      </div>
+                      {issue.customerReference ? (
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Customer reference: {issue.customerReference}
+                        </p>
+                      ) : null}
+                      {issue.summary ? (
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">{issue.summary}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             {canMutate && incident.status !== "resolved" ? (
               <form action={linkExternalIssueAction} className="mt-6 space-y-4 border-t border-border pt-6">
                 <input type="hidden" name="sourceKind" value="ciex" />
