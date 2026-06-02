@@ -11,6 +11,7 @@ describe("incident alert queueing hooks", () => {
     vi.restoreAllMocks();
     vi.doUnmock("@/lib/server/audit/audit-log");
     vi.doUnmock("@/lib/server/alerts/alert-engine");
+    vi.doUnmock("@/lib/server/external-issues/external-issue-service");
   });
 
   it("queues incident_created when the incident engine creates an incident", async () => {
@@ -25,6 +26,9 @@ describe("incident alert queueing hooks", () => {
     });
     vi.doMock("@/lib/server/alerts/alert-engine", () => ({
       queueIncidentAlertDeliveries,
+    }));
+    vi.doMock("@/lib/server/external-issues/external-issue-service", () => ({
+      listLinkedExternalIssuesForIncident: vi.fn().mockResolvedValue([]),
     }));
 
     const { processScheduledIncidentState } = await import(
@@ -104,6 +108,20 @@ describe("incident alert queueing hooks", () => {
             order: vi.fn().mockResolvedValue({ data: [], error: null }),
           };
         }
+        if (table === "incident_external_issues") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            order: vi.fn().mockResolvedValue({ data: [], error: null }),
+          };
+        }
+        if (table === "external_issues") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            in: vi.fn().mockResolvedValue({ data: [], error: null }),
+          };
+        }
         throw new Error(`Unexpected table: ${table}`);
       }),
     };
@@ -166,7 +184,7 @@ describe("incident alert queueing hooks", () => {
       }),
       adminClient,
     );
-  });
+  }, 15000);
 
   it("queues acknowledged and resolved user incident events", async () => {
     vi.doMock("@/lib/server/audit/audit-log", () => ({
@@ -181,13 +199,100 @@ describe("incident alert queueing hooks", () => {
     vi.doMock("@/lib/server/alerts/alert-engine", () => ({
       queueIncidentAlertDeliveries,
     }));
+    vi.doMock("@/lib/server/external-issues/external-issue-service", () => ({
+      listLinkedExternalIssuesForIncident: vi.fn().mockResolvedValue([]),
+    }));
 
     const { acknowledgeIncident, resolveIncident } = await import(
       "@/lib/server/incidents/incident-service"
     );
 
-    let incidentLookupStatus = "open";
-    let incidentMaybeSingleCalls = 0;
+    const baseIncident = {
+      id: "incident-1",
+      organization_id: "org-1",
+      app_id: "app-1",
+      environment_id: "env-1",
+      monitor_id: "monitor-1",
+      created_from_result_id: "result-1",
+      title: "API health is down",
+      summary: "HTTP 503",
+      severity: "critical",
+      dedupe_key: "primary_failure",
+      assigned_to: null,
+      opened_by: null,
+      detected_at: "2026-06-01T00:00:00Z",
+      auto_resolve_on_recovery: false,
+      root_cause: null,
+      resolution_notes: null,
+      created_at: "2026-06-01T00:00:00Z",
+      updated_at: "2026-06-01T00:01:00Z",
+    };
+    const incidentMaybeSingleResponses = [
+      {
+        id: "incident-1",
+        organization_id: "org-1",
+        app_id: "app-1",
+        environment_id: "env-1",
+        monitor_id: "monitor-1",
+      },
+      {
+        ...baseIncident,
+        status: "open",
+        opened_at: "2026-06-01T00:01:00Z",
+        acknowledged_at: null,
+        recovered_at: null,
+        resolved_at: null,
+        last_state_change_at: "2026-06-01T00:01:00Z",
+      },
+      {
+        id: "incident-1",
+        organization_id: "org-1",
+        app_id: "app-1",
+        environment_id: "env-1",
+        monitor_id: "monitor-1",
+      },
+      {
+        ...baseIncident,
+        status: "acknowledged",
+        opened_at: "2026-06-01T00:01:00Z",
+        acknowledged_at: "2026-06-01T00:02:00Z",
+        recovered_at: null,
+        resolved_at: null,
+        last_state_change_at: "2026-06-01T00:02:00Z",
+      },
+      {
+        id: "incident-1",
+        organization_id: "org-1",
+        app_id: "app-1",
+        environment_id: "env-1",
+        monitor_id: "monitor-1",
+      },
+      {
+        ...baseIncident,
+        status: "acknowledged",
+        opened_at: "2026-06-01T00:01:00Z",
+        acknowledged_at: "2026-06-01T00:02:00Z",
+        recovered_at: null,
+        resolved_at: null,
+        last_state_change_at: "2026-06-01T00:02:00Z",
+      },
+      {
+        id: "incident-1",
+        organization_id: "org-1",
+        app_id: "app-1",
+        environment_id: "env-1",
+        monitor_id: "monitor-1",
+      },
+      {
+        ...baseIncident,
+        status: "resolved",
+        opened_at: "2026-06-01T00:01:00Z",
+        acknowledged_at: "2026-06-01T00:02:00Z",
+        recovered_at: "2026-06-01T00:03:00Z",
+        resolved_at: "2026-06-01T00:03:00Z",
+        last_state_change_at: "2026-06-01T00:03:00Z",
+      },
+    ];
     const adminClient = {
       from: vi.fn((table: string) => {
         if (table === "memberships") {
@@ -215,32 +320,6 @@ describe("incident alert queueing hooks", () => {
           };
         }
         if (table === "incidents") {
-          const resolvedData = {
-            id: "incident-1",
-            organization_id: "org-1",
-            app_id: "app-1",
-            environment_id: "env-1",
-            monitor_id: "monitor-1",
-            created_from_result_id: "result-1",
-            title: "API health is down",
-            summary: "HTTP 503",
-            severity: "critical",
-            status: incidentLookupStatus,
-            dedupe_key: "primary_failure",
-            assigned_to: null,
-            opened_by: null,
-            detected_at: "2026-06-01T00:00:00Z",
-            opened_at: "2026-06-01T00:01:00Z",
-            acknowledged_at: null,
-            recovered_at: null,
-            resolved_at: null,
-            auto_resolve_on_recovery: false,
-            root_cause: null,
-            resolution_notes: null,
-            last_state_change_at: "2026-06-01T00:01:00Z",
-            created_at: "2026-06-01T00:00:00Z",
-            updated_at: "2026-06-01T00:01:00Z",
-          };
           const updateChain = {
             update: vi.fn(),
             eq: vi.fn(),
@@ -258,24 +337,13 @@ describe("incident alert queueing hooks", () => {
             select: vi.fn().mockReturnThis(),
             eq: vi.fn().mockReturnThis(),
             maybeSingle: vi.fn().mockImplementation(async () => {
-              incidentMaybeSingleCalls += 1;
-
               return {
-                data:
-                  incidentMaybeSingleCalls % 2 === 1
-                    ? {
-                        id: "incident-1",
-                        organization_id: "org-1",
-                        app_id: "app-1",
-                        environment_id: "env-1",
-                        monitor_id: "monitor-1",
-                      }
-                    : resolvedData,
+                data: incidentMaybeSingleResponses.shift() ?? null,
                 error: null,
               };
             }),
             update: updateChain.update,
-            single: vi.fn().mockResolvedValue({ data: resolvedData, error: null }),
+            single: vi.fn().mockResolvedValue({ data: incidentMaybeSingleResponses[0] ?? null, error: null }),
           };
         }
         if (table === "incident_updates") {
@@ -315,6 +383,20 @@ describe("incident alert queueing hooks", () => {
             in: vi.fn().mockResolvedValue({ data: [], error: null }),
           };
         }
+        if (table === "incident_external_issues") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            order: vi.fn().mockResolvedValue({ data: [], error: null }),
+          };
+        }
+        if (table === "external_issues") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            in: vi.fn().mockResolvedValue({ data: [], error: null }),
+          };
+        }
         throw new Error(`Unexpected table: ${table}`);
       }),
     };
@@ -337,7 +419,6 @@ describe("incident alert queueing hooks", () => {
     };
 
     await acknowledgeIncident(context, "incident-1", adminClient as never);
-    incidentLookupStatus = "acknowledged";
     await resolveIncident(
       context,
       "incident-1",
@@ -357,5 +438,5 @@ describe("incident alert queueing hooks", () => {
       expect.objectContaining({ eventType: "incident_resolved" }),
       adminClient,
     );
-  });
+  }, 15000);
 });

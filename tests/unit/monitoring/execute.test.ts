@@ -12,6 +12,7 @@ describe("manual monitor execution", () => {
     vi.doUnmock("@/lib/server/audit/audit-log");
     vi.doUnmock("@/lib/server/monitoring/evaluate");
     vi.doUnmock("@/lib/server/monitoring/result-service");
+    vi.doUnmock("@/lib/server/monitors/monitor-sanitization");
     vi.doUnmock("@/lib/server/monitors/monitor-service");
     vi.doUnmock("@/lib/server/supabase/admin");
   });
@@ -54,8 +55,33 @@ describe("manual monitor execution", () => {
       getRawMonitorForExecution: vi.fn().mockResolvedValue({
         id: "monitor-1",
         organizationId: "org-1",
+        appId: "app-1",
+        environmentId: "env-1",
         name: "API health",
+        slug: "api-health",
+        type: "http",
+        status: "operational",
+        isEnabled: true,
+        requestMethod: "GET",
+        targetUrl: "https://example.com/health",
+        expectedStatusCodes: [200],
+        intervalSeconds: 300,
+        nextCheckAt: null,
+        timeoutMs: 10000,
+        latencyThresholdMs: null,
+        consecutiveFailureThreshold: 3,
+        consecutiveRecoveryThreshold: 2,
         configuration: {},
+        description: null,
+        createdAt: "2026-06-01T00:00:00Z",
+        updatedAt: "2026-06-01T00:00:00Z",
+      }),
+    }));
+
+    vi.doMock("@/lib/server/monitors/monitor-sanitization", () => ({
+      sanitizeMonitorForAudit: vi.fn().mockReturnValue({
+        id: "monitor-1",
+        name: "API health",
       }),
     }));
 

@@ -17,11 +17,13 @@ import {
   toSafeIncidentDetail,
   toSafeIncidentSummary,
   toSafeIncidentUpdate,
+  withLinkedExternalIssues,
   type IncidentRelations,
   type RawIncidentRecord,
   type SafeIncidentDetail,
   type SafeIncidentSummary,
 } from "@/lib/server/incidents/incident-sanitization";
+import { listLinkedExternalIssuesForIncident } from "@/lib/server/external-issues/external-issue-service";
 import { toSafeMonitorResult, type SafeMonitorResult } from "@/lib/server/monitoring/result-sanitization";
 
 type AdminLike = ReturnType<typeof createSupabaseAdminClient>;
@@ -83,6 +85,8 @@ const INCIDENT_SELECT = [
   "auto_resolve_on_recovery",
   "root_cause",
   "resolution_notes",
+  "customer_impact_summary",
+  "customer_impact_notes",
   "last_state_change_at",
   "created_at",
   "updated_at",
@@ -142,6 +146,8 @@ function mapIncidentRow(row: IncidentLookupRow): RawIncidentRecord {
     autoResolveOnRecovery: Boolean(row.auto_resolve_on_recovery),
     rootCause: (row.root_cause as string | null) ?? null,
     resolutionNotes: (row.resolution_notes as string | null) ?? null,
+    customerImpactSummary: (row.customer_impact_summary as string | null) ?? null,
+    customerImpactNotes: (row.customer_impact_notes as string | null) ?? null,
     lastStateChangeAt: String(row.last_state_change_at),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -362,7 +368,7 @@ export async function getIncidentById(
   adminClient: AdminLike = createSupabaseAdminClient(),
 ): Promise<SafeIncidentDetail> {
   const { incident } = await getRawIncidentById(userId, incidentId, organizationId, adminClient);
-  const [updatesResult, latestResultsResult, relations] = await Promise.all([
+  const [updatesResult, latestResultsResult, relations, linkedExternalIssues] = await Promise.all([
     adminClient
       .from("incident_updates")
       .select("id, actor_type, actor_user_id, status_from, status_to, message, created_at")
@@ -379,6 +385,7 @@ export async function getIncidentById(
       .order("checked_at", { ascending: false })
       .limit(5),
     loadIncidentRelations(incident.organizationId, [incident], adminClient),
+    listLinkedExternalIssuesForIncident(userId, incident.id, incident.organizationId, adminClient),
   ]);
 
   if (updatesResult.error) {
@@ -388,7 +395,7 @@ export async function getIncidentById(
     throw mapPostgresError(latestResultsResult.error);
   }
 
-  return toSafeIncidentDetail(
+  return withLinkedExternalIssues(toSafeIncidentDetail(
     incident,
     relations.get(incident.id) ?? {
       appName: null,
@@ -399,7 +406,7 @@ export async function getIncidentById(
     },
     ((updatesResult.data ?? []) as RawIncidentUpdateRow[]).map((row) => toSafeIncidentUpdate(row)),
     ((latestResultsResult.data ?? []) as Record<string, unknown>[]).map((row) => mapResultRow(row)),
-  );
+  ), linkedExternalIssues);
 }
 
 export async function acknowledgeIncident(

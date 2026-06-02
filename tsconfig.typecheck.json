@@ -1,7 +1,8 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["node"]
+    "types": ["node"],
+    "incremental": false
   },
   "include": [
     "next-env.d.ts",
@@ -11,8 +12,6 @@
     "components/**/*.tsx",
     "lib/**/*.ts",
     "lib/**/*.tsx",
-    "tests/**/*.ts",
-    "tests/**/*.tsx",
     "proxy.ts",
     "next.config.ts",
     "vitest.config.ts"

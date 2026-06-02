@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { SafeExternalIssue } from "@/lib/server/external-issues/external-issue-sanitization";
 import type { SafeMonitorResult } from "@/lib/server/monitoring/result-sanitization";
 
 const MAX_TEXT_LENGTH = 4000;
@@ -45,6 +46,8 @@ export type RawIncidentRecord = {
   autoResolveOnRecovery: boolean;
   rootCause: string | null;
   resolutionNotes: string | null;
+  customerImpactSummary: string | null;
+  customerImpactNotes: string | null;
   lastStateChangeAt: string;
   createdAt: string;
   updatedAt: string;
@@ -89,6 +92,9 @@ export type SafeIncidentDetail = SafeIncidentSummary & {
   autoResolveOnRecovery: boolean;
   rootCause: string | null;
   resolutionNotes: string | null;
+  customerImpactSummary: string | null;
+  customerImpactNotes: string | null;
+  linkedExternalIssues: SafeExternalIssue[];
   createdFromResultId: string | null;
   assignedTo: string | null;
   updates: SafeIncidentUpdate[];
@@ -200,10 +206,23 @@ export function toSafeIncidentDetail(
     autoResolveOnRecovery: raw.autoResolveOnRecovery,
     rootCause: sanitizeIncidentText(raw.rootCause),
     resolutionNotes: sanitizeIncidentText(raw.resolutionNotes),
+    customerImpactSummary: sanitizeIncidentText(raw.customerImpactSummary),
+    customerImpactNotes: sanitizeIncidentText(raw.customerImpactNotes),
     createdFromResultId: raw.createdFromResultId,
     assignedTo: raw.assignedTo,
+    linkedExternalIssues: [],
     updates,
     latestResults,
+  };
+}
+
+export function withLinkedExternalIssues(
+  detail: SafeIncidentDetail,
+  linkedExternalIssues: SafeExternalIssue[],
+): SafeIncidentDetail {
+  return {
+    ...detail,
+    linkedExternalIssues,
   };
 }
 
@@ -226,6 +245,8 @@ export function sanitizeIncidentForAudit(raw: RawIncidentRecord) {
     autoResolveOnRecovery: raw.autoResolveOnRecovery,
     rootCause: sanitizeIncidentText(raw.rootCause),
     resolutionNotes: sanitizeIncidentText(raw.resolutionNotes),
+    customerImpactSummary: sanitizeIncidentText(raw.customerImpactSummary),
+    customerImpactNotes: sanitizeIncidentText(raw.customerImpactNotes),
     lastStateChangeAt: raw.lastStateChangeAt,
     updatedAt: raw.updatedAt,
   };

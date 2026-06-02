@@ -13,6 +13,13 @@ import { requireAppSession, requireUser } from "@/lib/server/auth/guards";
 import { requireOrgMembership } from "@/lib/server/auth/organization-context";
 import { canManageIncidents } from "@/lib/server/auth/permissions";
 import {
+  createAndLinkExternalIssueReference,
+  createExternalIssueReferenceSchema,
+  unlinkExternalIssueFromIncident,
+  updateIncidentCustomerImpact,
+  updateIncidentCustomerImpactSchema,
+} from "@/lib/server/external-issues/external-issue-service";
+import {
   createIncidentUpdateSchema,
   createUserIncidentUpdate,
   getIncidentById,
@@ -215,6 +222,134 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
     }
   }
 
+  async function linkExternalIssueAction(formData: FormData) {
+    "use server";
+
+    try {
+      const user = await requireUser();
+      const organizationContext = await requireOrgMembership(user.id);
+
+      if (!canManageIncidents(organizationContext.membership.role)) {
+        throw new ApiError(
+          403,
+          "ORG_ROLE_REQUIRED",
+          "This action requires responder, admin, or owner access.",
+        );
+      }
+
+      const input = parseSchema(createExternalIssueReferenceSchema, {
+        sourceKind: formData.get("sourceKind") ? String(formData.get("sourceKind")) : "ciex",
+        externalId: formData.get("externalId") ? String(formData.get("externalId")) : "",
+        externalKey: formData.get("externalKey") ? String(formData.get("externalKey")) : null,
+        title: formData.get("title") ? String(formData.get("title")) : "",
+        status: formData.get("status") ? String(formData.get("status")) : null,
+        priority: formData.get("priority") ? String(formData.get("priority")) : null,
+        sourceUrl: formData.get("sourceUrl") ? String(formData.get("sourceUrl")) : null,
+        customerReference: formData.get("customerReference")
+          ? String(formData.get("customerReference"))
+          : null,
+        summary: formData.get("summary") ? String(formData.get("summary")) : null,
+      });
+
+      await createAndLinkExternalIssueReference(
+        {
+          userId: user.id,
+          organization: organizationContext.organization,
+          membership: organizationContext.membership,
+        },
+        incidentId,
+        input,
+      );
+
+      revalidatePath("/incidents");
+      revalidatePath(`/incidents/${incidentId}`);
+      redirect(`/incidents/${incidentId}?status=external_issue_linked`);
+    } catch (error) {
+      redirect(`/incidents/${incidentId}?error=${getActionErrorRedirectValue(error)}`);
+    }
+  }
+
+  async function unlinkExternalIssueAction(formData: FormData) {
+    "use server";
+
+    try {
+      const user = await requireUser();
+      const organizationContext = await requireOrgMembership(user.id);
+
+      if (!canManageIncidents(organizationContext.membership.role)) {
+        throw new ApiError(
+          403,
+          "ORG_ROLE_REQUIRED",
+          "This action requires responder, admin, or owner access.",
+        );
+      }
+
+      const externalIssueId = formData.get("externalIssueId");
+
+      if (!externalIssueId) {
+        throw new ApiError(400, "VALIDATION_ERROR", "Request validation failed.");
+      }
+
+      await unlinkExternalIssueFromIncident(
+        {
+          userId: user.id,
+          organization: organizationContext.organization,
+          membership: organizationContext.membership,
+        },
+        incidentId,
+        String(externalIssueId),
+      );
+
+      revalidatePath("/incidents");
+      revalidatePath(`/incidents/${incidentId}`);
+      redirect(`/incidents/${incidentId}?status=external_issue_unlinked`);
+    } catch (error) {
+      redirect(`/incidents/${incidentId}?error=${getActionErrorRedirectValue(error)}`);
+    }
+  }
+
+  async function updateCustomerImpactAction(formData: FormData) {
+    "use server";
+
+    try {
+      const user = await requireUser();
+      const organizationContext = await requireOrgMembership(user.id);
+
+      if (!canManageIncidents(organizationContext.membership.role)) {
+        throw new ApiError(
+          403,
+          "ORG_ROLE_REQUIRED",
+          "This action requires responder, admin, or owner access.",
+        );
+      }
+
+      const input = parseSchema(updateIncidentCustomerImpactSchema, {
+        customerImpactSummary: formData.get("customerImpactSummary")
+          ? String(formData.get("customerImpactSummary"))
+          : null,
+        customerImpactNotes: formData.get("customerImpactNotes")
+          ? String(formData.get("customerImpactNotes"))
+          : null,
+      });
+
+      await updateIncidentCustomerImpact(
+        {
+          userId: user.id,
+          organization: organizationContext.organization,
+          membership: organizationContext.membership,
+        },
+        incidentId,
+        input,
+      );
+
+      revalidatePath("/incidents");
+      revalidatePath(`/incidents/${incidentId}`);
+      redirect(`/incidents/${incidentId}?status=customer_impact_updated`);
+    } catch (error) {
+      redirect(`/incidents/${incidentId}?error=${getActionErrorRedirectValue(error)}`);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <section className="space-y-2">
@@ -287,6 +422,168 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
                 <p>{incident.resolutionNotes ?? "No resolution notes recorded yet."}</p>
               </div>
             </div>
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-5">
+            <h2 className="text-lg font-semibold tracking-tight">Customer impact</h2>
+            <div className="mt-5 space-y-4 text-sm leading-6 text-muted-foreground">
+              <div>
+                <p className="font-medium text-foreground">Impact summary</p>
+                <p>{incident.customerImpactSummary ?? "No customer impact summary recorded yet."}</p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Impact notes</p>
+                <p>{incident.customerImpactNotes ?? "No customer impact notes recorded yet."}</p>
+              </div>
+            </div>
+            {canMutate && incident.status !== "resolved" ? (
+              <form action={updateCustomerImpactAction} className="mt-5 space-y-4">
+                <label className="space-y-2 text-sm">
+                  <span className="font-medium">Impact summary</span>
+                  <textarea
+                    name="customerImpactSummary"
+                    rows={3}
+                    defaultValue={incident.customerImpactSummary ?? ""}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2"
+                  />
+                </label>
+                <label className="space-y-2 text-sm">
+                  <span className="font-medium">Impact notes</span>
+                  <textarea
+                    name="customerImpactNotes"
+                    rows={4}
+                    defaultValue={incident.customerImpactNotes ?? ""}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2"
+                  />
+                </label>
+                <Button type="submit" variant="secondary">
+                  Save customer impact
+                </Button>
+              </form>
+            ) : null}
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-5">
+            <h2 className="text-lg font-semibold tracking-tight">Linked external issues</h2>
+            {incident.linkedExternalIssues.length === 0 ? (
+              <div className="mt-6 rounded-md border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
+                No external issues are linked to this incident yet.
+              </div>
+            ) : (
+              <ul className="mt-6 space-y-3">
+                {incident.linkedExternalIssues.map((issue) => (
+                  <li key={issue.id} className="rounded-md border border-border px-4 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <p className="font-medium">
+                          {issue.externalKey ?? issue.externalId} · {issue.title}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {issue.sourceKind}
+                          {issue.status ? ` · ${issue.status}` : ""}
+                          {issue.priority ? ` · ${issue.priority}` : ""}
+                        </p>
+                      </div>
+                      {canMutate ? (
+                        <form action={unlinkExternalIssueAction}>
+                          <input type="hidden" name="externalIssueId" value={issue.id} />
+                          <Button type="submit" variant="ghost" size="sm">
+                            Unlink
+                          </Button>
+                        </form>
+                      ) : null}
+                    </div>
+                    {issue.customerReference ? (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Customer reference: {issue.customerReference}
+                      </p>
+                    ) : null}
+                    {issue.summary ? (
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{issue.summary}</p>
+                    ) : null}
+                    {issue.sourceUrl ? (
+                      <a
+                        href={issue.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-block text-sm text-primary underline-offset-4 hover:underline"
+                      >
+                        Open source ticket
+                      </a>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {canMutate && incident.status !== "resolved" ? (
+              <form action={linkExternalIssueAction} className="mt-6 space-y-4 border-t border-border pt-6">
+                <input type="hidden" name="sourceKind" value="ciex" />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="space-y-2 text-sm">
+                    <span className="font-medium">CIEX ticket id</span>
+                    <input
+                      name="externalId"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm">
+                    <span className="font-medium">Ticket key</span>
+                    <input
+                      name="externalKey"
+                      placeholder="CIEX-1234"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm md:col-span-2">
+                    <span className="font-medium">Title</span>
+                    <input
+                      name="title"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm">
+                    <span className="font-medium">Status</span>
+                    <input
+                      name="status"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm">
+                    <span className="font-medium">Priority</span>
+                    <input
+                      name="priority"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm">
+                    <span className="font-medium">Customer reference</span>
+                    <input
+                      name="customerReference"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm">
+                    <span className="font-medium">Source URL</span>
+                    <input
+                      name="sourceUrl"
+                      type="url"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2"
+                    />
+                  </label>
+                </div>
+                <label className="space-y-2 text-sm">
+                  <span className="font-medium">Safe summary</span>
+                  <textarea
+                    name="summary"
+                    rows={3}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2"
+                  />
+                </label>
+                <Button type="submit" variant="secondary">
+                  Link CIEX ticket
+                </Button>
+              </form>
+            ) : null}
           </div>
 
           <div className="rounded-lg border border-border bg-card p-5">

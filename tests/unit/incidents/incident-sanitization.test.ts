@@ -4,6 +4,7 @@ import {
   sanitizeIncidentForAudit,
   sanitizeIncidentText,
   toSafeIncidentDetail,
+  withLinkedExternalIssues,
   type RawIncidentRecord,
 } from "@/lib/server/incidents/incident-sanitization";
 
@@ -29,6 +30,8 @@ const rawIncident: RawIncidentRecord = {
   autoResolveOnRecovery: false,
   rootCause: "<script>alert(1)</script>",
   resolutionNotes: "Authorization=Bearer secret",
+  customerImpactSummary: "Acme Corp could not sign in.",
+  customerImpactNotes: "Customer portal ticket CIEX-123 was opened.",
   lastStateChangeAt: "2026-06-01T00:01:00Z",
   createdAt: "2026-06-01T00:00:00Z",
   updatedAt: "2026-06-01T00:01:00Z",
@@ -52,7 +55,7 @@ describe("incident sanitization", () => {
   });
 
   it("builds safe detail payloads from already-sanitized related results", () => {
-    const detail = toSafeIncidentDetail(
+    const detail = withLinkedExternalIssues(toSafeIncidentDetail(
       rawIncident,
       {
         appName: "Tiquer",
@@ -87,13 +90,31 @@ describe("incident sanitization", () => {
           metadataSummary: null,
         },
       ],
-    );
+    ), [
+      {
+        id: "issue-1",
+        sourceKind: "ciex",
+        externalId: "ticket-123",
+        externalKey: "CIEX-123",
+        title: "Customer cannot sign in",
+        status: "open",
+        priority: "high",
+        sourceUrl: "https://ciex.example.com/tickets/123",
+        customerReference: "Acme Corp",
+        summary: "Customer reports auth failures.",
+        linkedAt: "2026-06-01T00:03:00Z",
+        createdAt: "2026-06-01T00:00:00Z",
+        updatedAt: "2026-06-01T00:01:00Z",
+      },
+    ]);
 
     expect(detail).toEqual(
       expect.objectContaining({
         title: "API outage",
         appName: "Tiquer",
         monitorName: "API health",
+        customerImpactSummary: "Acme Corp could not sign in.",
+        linkedExternalIssues: [expect.objectContaining({ sourceKind: "ciex" })],
         latestResults: [
           expect.objectContaining({
             id: "result-1",

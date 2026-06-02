@@ -71,6 +71,8 @@ function mapIncidentRow(row: Record<string, unknown>): RawIncidentRecord {
     autoResolveOnRecovery: Boolean(row.auto_resolve_on_recovery),
     rootCause: (row.root_cause as string | null) ?? null,
     resolutionNotes: (row.resolution_notes as string | null) ?? null,
+    customerImpactSummary: (row.customer_impact_summary as string | null) ?? null,
+    customerImpactNotes: (row.customer_impact_notes as string | null) ?? null,
     lastStateChangeAt: String(row.last_state_change_at),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),

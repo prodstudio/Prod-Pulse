@@ -160,7 +160,7 @@ export function getActionErrorRedirectValue(error: unknown): ClientErrorCode {
 export function getActionErrorMessage(errorCode: string | null | undefined) {
   switch (errorCode) {
     case "validation_failed":
-      return "The submitted monitor details are invalid.";
+      return "The submitted details are invalid.";
     case "unauthorized":
       return "Sign in again to continue.";
     case "forbidden":

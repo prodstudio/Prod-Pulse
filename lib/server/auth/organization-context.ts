@@ -50,6 +50,7 @@ type ResourceKind =
   | "monitor"
   | "heartbeat"
   | "incident"
+  | "external_issue"
   | "status_page"
   | "status_page_component"
   | "alert_rule"
@@ -61,6 +62,7 @@ const RESOURCE_TABLES: Record<ResourceKind, string> = {
   monitor: "monitors",
   heartbeat: "heartbeats",
   incident: "incidents",
+  external_issue: "external_issues",
   status_page: "status_pages",
   status_page_component: "status_page_components",
   alert_rule: "alert_rules",
@@ -73,6 +75,7 @@ const RESOURCE_SELECTS: Record<ResourceKind, string> = {
   monitor: "id, organization_id, app_id, environment_id, name, slug",
   heartbeat: "id, organization_id, app_id, environment_id, monitor_id, name, slug",
   incident: "id, organization_id, app_id, environment_id, monitor_id",
+  external_issue: "id, organization_id, source_kind, external_id, external_key, title",
   status_page: "id, organization_id, name, slug",
   status_page_component:
     "id, organization_id, status_page_id, monitored_app_id, environment_id, monitor_id, display_name",
