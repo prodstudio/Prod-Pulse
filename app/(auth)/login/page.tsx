@@ -25,6 +25,7 @@ function getLoginMessage(errorCode: string | undefined, status: string | undefin
     case "unauthorized":
       return "The email or password is invalid.";
     case "request_failed":
+    case "unexpected_error":
       return "The request could not be completed.";
     default:
       return null;

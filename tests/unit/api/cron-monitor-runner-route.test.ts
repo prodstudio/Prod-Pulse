@@ -1,9 +1,17 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("cron monitor runner route", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
   afterEach(() => {
     vi.resetModules();
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    vi.doUnmock("@/lib/server/monitoring/runner-service");
     delete process.env.CRON_SECRET;
     delete process.env.MONITOR_RUNNER_ENABLED;
   });

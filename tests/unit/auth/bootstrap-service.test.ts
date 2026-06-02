@@ -44,6 +44,14 @@ describe("bootstrap service", () => {
     await expect(getBootstrapAvailability(adminClient as never)).resolves.toBe("available");
   });
 
+  it("reports bootstrap locked when the token is not configured", async () => {
+    const adminClient = {
+      from: vi.fn(() => createMembershipQuery([])),
+    };
+
+    await expect(getBootstrapAvailability(adminClient as never)).resolves.toBe("token_not_configured");
+  });
+
   it("blocks bootstrap after memberships already exist", async () => {
     process.env.INITIAL_OWNER_BOOTSTRAP_TOKEN = "bootstrap-secret";
 

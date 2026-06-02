@@ -1,16 +1,23 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@/lib/server/audit/audit-log", () => ({
-  writeAuditLog: vi.fn().mockResolvedValue(undefined),
-}));
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("incident alert queueing hooks", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
+
   afterEach(() => {
     vi.resetModules();
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.doUnmock("@/lib/server/audit/audit-log");
+    vi.doUnmock("@/lib/server/alerts/alert-engine");
   });
 
   it("queues incident_created when the incident engine creates an incident", async () => {
+    vi.doMock("@/lib/server/audit/audit-log", () => ({
+      writeAuditLog: vi.fn().mockResolvedValue(undefined),
+    }));
+
     const queueIncidentAlertDeliveries = vi.fn().mockResolvedValue({
       queuedCount: 1,
       duplicateCount: 0,
@@ -162,6 +169,10 @@ describe("incident alert queueing hooks", () => {
   });
 
   it("queues acknowledged and resolved user incident events", async () => {
+    vi.doMock("@/lib/server/audit/audit-log", () => ({
+      writeAuditLog: vi.fn().mockResolvedValue(undefined),
+    }));
+
     const queueIncidentAlertDeliveries = vi.fn().mockResolvedValue({
       queuedCount: 1,
       duplicateCount: 0,

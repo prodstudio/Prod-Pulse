@@ -1,48 +1,64 @@
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@/lib/server/audit/audit-log", () => ({
-  writeAuditLog: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("@/lib/server/monitoring/evaluate", () => ({
-  evaluateMonitor: vi.fn().mockResolvedValue({
-    status: "success",
-    checkedAt: "2026-06-01T00:00:00Z",
-    startedAt: "2026-06-01T00:00:00Z",
-    finishedAt: "2026-06-01T00:00:01Z",
-    durationMs: 1000,
-    httpStatus: 200,
-    errorCode: null,
-    errorMessage: null,
-    responseExcerpt: null,
-    assertionResults: {},
-    metadata: {},
-    attempts: [],
-  }),
-}));
-
-vi.mock("@/lib/server/monitoring/result-service", () => ({
-  persistMonitorExecutionResult: vi.fn().mockResolvedValue({
-    id: "result-1",
-    status: "success",
-    checkedAt: "2026-06-01T00:00:00Z",
-    httpStatus: 200,
-    errorCode: null,
-  }),
-}));
-
-vi.mock("@/lib/server/monitors/monitor-service", () => ({
-  getRawMonitorForExecution: vi.fn().mockResolvedValue({
-    id: "monitor-1",
-    organizationId: "org-1",
-    name: "API health",
-    configuration: {},
-  }),
-}));
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("manual monitor execution", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+    vi.doUnmock("@/lib/server/audit/audit-log");
+    vi.doUnmock("@/lib/server/monitoring/evaluate");
+    vi.doUnmock("@/lib/server/monitoring/result-service");
+    vi.doUnmock("@/lib/server/monitors/monitor-service");
+    vi.doUnmock("@/lib/server/supabase/admin");
+  });
+
   it("does not queue alert deliveries during a manual run", async () => {
     const tablesSeen: string[] = [];
+
+    vi.doMock("@/lib/server/audit/audit-log", () => ({
+      writeAuditLog: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    vi.doMock("@/lib/server/monitoring/evaluate", () => ({
+      evaluateMonitor: vi.fn().mockResolvedValue({
+        status: "success",
+        checkedAt: "2026-06-01T00:00:00Z",
+        startedAt: "2026-06-01T00:00:00Z",
+        finishedAt: "2026-06-01T00:00:01Z",
+        durationMs: 1000,
+        httpStatus: 200,
+        errorCode: null,
+        errorMessage: null,
+        responseExcerpt: null,
+        assertionResults: {},
+        metadata: {},
+        attempts: [],
+      }),
+    }));
+
+    vi.doMock("@/lib/server/monitoring/result-service", () => ({
+      persistMonitorExecutionResult: vi.fn().mockResolvedValue({
+        id: "result-1",
+        status: "success",
+        checkedAt: "2026-06-01T00:00:00Z",
+        httpStatus: 200,
+        errorCode: null,
+      }),
+    }));
+
+    vi.doMock("@/lib/server/monitors/monitor-service", () => ({
+      getRawMonitorForExecution: vi.fn().mockResolvedValue({
+        id: "monitor-1",
+        organizationId: "org-1",
+        name: "API health",
+        configuration: {},
+      }),
+    }));
+
     vi.doMock("@/lib/server/supabase/admin", () => ({
       createSupabaseAdminClient: () => ({
         from: (table: string) => {

@@ -1,14 +1,20 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-import { ApiError } from "@/lib/server/api/errors";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("heartbeat ingestion route", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
+
   afterEach(() => {
     vi.resetModules();
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.doUnmock("@/lib/server/heartbeats/heartbeat-service");
   });
 
   it("returns a safe not-found response for invalid tokens", async () => {
+    const { ApiError } = await import("@/lib/server/api/errors");
+
     vi.doMock("@/lib/server/heartbeats/heartbeat-service", () => ({
       ingestHeartbeatPing: vi
         .fn()
