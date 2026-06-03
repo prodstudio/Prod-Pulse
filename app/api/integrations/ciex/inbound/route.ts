@@ -12,14 +12,7 @@ export async function POST(request: Request) {
     const payload = await parseJsonBody(request, ciexInboundPayloadSchema);
     const result = await ingestCiexInboundIssue(request, payload);
 
-    return NextResponse.json({
-      data: {
-        issue: result.issue,
-        suggestedIncidentIds: result.suggestedIncidentIds,
-        created: result.created,
-        updated: result.updated,
-      },
-    });
+    return NextResponse.json({ data: result }, { status: result.created ? 201 : 200 });
   } catch (error) {
     return createErrorResponse(error);
   }

@@ -82,11 +82,56 @@ export const ciexInboundTicketSchema = z.object({
   sourceUpdatedAt: z.string().datetime({ offset: true }).optional().nullable(),
 });
 
-export const ciexInboundPayloadSchema = z.object({
+const ciexInboundNestedPayloadSchema = z.object({
   ticket: ciexInboundTicketSchema,
   eventType: z.string().trim().max(80).optional().nullable(),
   deliveredAt: z.string().datetime({ offset: true }).optional().nullable(),
 });
+
+const ciexInboundFlatPayloadSchema = z.object({
+  eventType: z.string().trim().max(80).optional().nullable(),
+  externalId: z.string().trim().min(1).max(160),
+  externalKey: z.string().trim().max(160).optional().nullable(),
+  title: z.string().trim().min(1).max(160),
+  summary: z.string().trim().max(2000).optional().nullable(),
+  status: z.string().trim().max(80).optional().nullable(),
+  priority: z.string().trim().max(80).optional().nullable(),
+  sourceUrl: z.string().trim().max(500).optional().nullable(),
+  customerReference: z.string().trim().max(160).optional().nullable(),
+  relatedAppId: z.string().uuid().optional().nullable(),
+  relatedEnvironmentId: z.string().uuid().optional().nullable(),
+  relatedMonitorId: z.string().uuid().optional().nullable(),
+  sourceCreatedAt: z.string().datetime({ offset: true }).optional().nullable(),
+  sourceUpdatedAt: z.string().datetime({ offset: true }).optional().nullable(),
+});
+
+export const ciexInboundPayloadSchema = z
+  .union([ciexInboundNestedPayloadSchema, ciexInboundFlatPayloadSchema])
+  .transform((payload) => {
+    if ("ticket" in payload) {
+      return payload;
+    }
+
+    return {
+      eventType: payload.eventType ?? null,
+      deliveredAt: null,
+      ticket: {
+        externalId: payload.externalId,
+        externalKey: payload.externalKey ?? null,
+        title: payload.title,
+        summary: payload.summary ?? null,
+        status: payload.status ?? null,
+        priority: payload.priority ?? null,
+        sourceUrl: payload.sourceUrl ?? null,
+        customerReference: payload.customerReference ?? null,
+        appId: payload.relatedAppId ?? null,
+        environmentId: payload.relatedEnvironmentId ?? null,
+        monitorId: payload.relatedMonitorId ?? null,
+        sourceCreatedAt: payload.sourceCreatedAt ?? null,
+        sourceUpdatedAt: payload.sourceUpdatedAt ?? null,
+      },
+    };
+  });
 
 export type CiexInboundPayload = z.infer<typeof ciexInboundPayloadSchema>;
 

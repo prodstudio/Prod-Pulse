@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { ingestCiexInboundIssue } from "@/lib/server/integrations/ciex-inbound-service";
+import {
+  ciexInboundPayloadSchema,
+  ingestCiexInboundIssue,
+} from "@/lib/server/integrations/ciex-inbound-service";
 
 vi.mock("@/lib/server/audit/audit-log", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
@@ -244,6 +247,80 @@ describe("ciex inbound service", () => {
     expect(result.issue.sourceKind).toBe("ciex");
   });
 
+  it("accepts Authorization Bearer auth for the inbound secret", async () => {
+    const secret = "generated-inbound-secret";
+    const secretHash = createHash("sha256").update(secret).digest("hex");
+
+    const request = new Request("https://prod-pulse.example.com/api/integrations/ciex/inbound", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${secret}`,
+      },
+      body: JSON.stringify({
+        ticket: {
+          externalId: "ticket-123",
+          title: "Customer cannot sign in",
+        },
+      }),
+    });
+
+    const adminClient = {
+      from: vi.fn((table: string) => {
+        if (table === "integrations") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: createIntegrationRow({ inbound_key_hash: secretHash }),
+              error: null,
+            }),
+            update: vi.fn().mockReturnThis(),
+          };
+        }
+
+        if (table === "external_issues") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            insert: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: createIssueRow(),
+              error: null,
+            }),
+          };
+        }
+
+        if (table === "incidents") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            neq: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+          };
+        }
+
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    };
+
+    const result = await ingestCiexInboundIssue(
+      request,
+      {
+        ticket: {
+          externalId: "ticket-123",
+          title: "Customer cannot sign in",
+        },
+      },
+      adminClient as never,
+    );
+
+    expect(result.created).toBe(true);
+    expect(result.issue.sourceKind).toBe("ciex");
+  });
+
   it("updates an existing normalized issue instead of creating a duplicate", async () => {
     let integrationCalls = 0;
     let externalIssueCalls = 0;
@@ -321,6 +398,116 @@ describe("ciex inbound service", () => {
     expect(result.created).toBe(false);
     expect(result.updated).toBe(true);
     expect(result.issue.title).toBe("Updated title");
+  });
+
+  it("accepts the flat CIEX sender payload and normalizes related refs", async () => {
+    let externalIssueCalls = 0;
+    const payload = ciexInboundPayloadSchema.parse({
+      eventType: "ticket.updated",
+      externalId: "ticket-123",
+      externalKey: "CIEX-123",
+      title: "Customer cannot sign in",
+      summary: "Customer reports repeated auth failures.",
+      status: "open",
+      priority: "high",
+      sourceUrl: "javascript:alert(1)",
+      customerReference: "Acme Corp",
+      relatedAppId: "00000000-0000-0000-0000-000000000001",
+      relatedEnvironmentId: "00000000-0000-0000-0000-000000000002",
+      relatedMonitorId: "00000000-0000-0000-0000-000000000003",
+      sourceCreatedAt: "2026-06-03T15:00:00.000Z",
+      sourceUpdatedAt: "2026-06-03T15:01:00.000Z",
+    });
+
+    const adminClient = {
+      from: vi.fn((table: string) => {
+        if (table === "integrations") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: createIntegrationRow(),
+              error: null,
+            }),
+            update: vi.fn().mockReturnThis(),
+          };
+        }
+
+        if (table === "monitors") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: createScopedLookupRow(
+                "00000000-0000-0000-0000-000000000003",
+                "00000000-0000-0000-0000-000000000001",
+                "00000000-0000-0000-0000-000000000002",
+              ),
+              error: null,
+            }),
+          };
+        }
+
+        if (table === "external_issues") {
+          externalIssueCalls += 1;
+          if (externalIssueCalls === 1) {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            };
+          }
+
+          return {
+            insert: vi.fn().mockReturnThis(),
+            select: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: createIssueRow({
+                source_url: null,
+                related_app_id: "00000000-0000-0000-0000-000000000001",
+                related_environment_id: "00000000-0000-0000-0000-000000000002",
+                related_monitor_id: "00000000-0000-0000-0000-000000000003",
+                source_created_at: "2026-06-03T15:00:00.000Z",
+                source_updated_at: "2026-06-03T15:01:00.000Z",
+              }),
+              error: null,
+            }),
+          };
+        }
+
+        if (table === "incidents") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            neq: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+          };
+        }
+
+        if (table === "incident_external_issues") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            in: vi.fn().mockResolvedValue({
+              data: [],
+              error: null,
+            }),
+          };
+        }
+
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    };
+
+    const result = await ingestCiexInboundIssue(createRequest(), payload, adminClient as never);
+
+    expect(result.created).toBe(true);
+    expect(result.updated).toBe(false);
+    expect(result.issue.sourceUrl).toBeNull();
+    expect(result.issue.relatedAppId).toBe("00000000-0000-0000-0000-000000000001");
+    expect(result.issue.relatedEnvironmentId).toBe("00000000-0000-0000-0000-000000000002");
+    expect(result.issue.relatedMonitorId).toBe("00000000-0000-0000-0000-000000000003");
   });
 
   it("rejects invalid inbound keys with a safe unauthorized error", async () => {

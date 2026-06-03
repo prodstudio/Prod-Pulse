@@ -36,9 +36,11 @@ ticket.
 
 ## Authentication contract
 
-Current placeholder contract:
+Current inbound auth contract:
 
-- send `x-prod-pulse-integration-key: <shared secret>`
+- send either:
+  - `x-prod-pulse-integration-key: <shared secret>`
+  - `Authorization: Bearer <shared secret>`
 - Prod Pulse hashes the provided secret with SHA-256
 - the hash must match `integrations.inbound_key_hash`
 - the integration row must have:
@@ -71,7 +73,9 @@ Never store the raw shared secret in plaintext columns.
 
 ## Payload shape
 
-Current accepted webhook payload:
+Current accepted webhook payloads:
+
+Nested compatibility shape:
 
 ```json
 {
@@ -94,6 +98,33 @@ Current accepted webhook payload:
   }
 }
 ```
+
+Flat CIEX sender shape:
+
+```json
+{
+  "eventType": "ticket.updated",
+  "externalId": "ticket-123",
+  "externalKey": "CIEX-123",
+  "title": "Customer cannot sign in",
+  "summary": "Customer reports repeated auth failures.",
+  "status": "open",
+  "priority": "high",
+  "sourceUrl": "https://ciex.example.com/tickets/123",
+  "customerReference": "Acme Corp",
+  "relatedAppId": null,
+  "relatedEnvironmentId": null,
+  "relatedMonitorId": null,
+  "sourceCreatedAt": "2026-06-02T14:45:00Z",
+  "sourceUpdatedAt": "2026-06-02T14:59:00Z"
+}
+```
+
+For the flat sender shape, Prod Pulse normalizes:
+
+- `relatedAppId -> appId`
+- `relatedEnvironmentId -> environmentId`
+- `relatedMonitorId -> monitorId`
 
 `appId`, `environmentId`, and `monitorId` are optional deterministic internal references. If supplied, they must belong to the integration's organization and remain relationship-consistent.
 

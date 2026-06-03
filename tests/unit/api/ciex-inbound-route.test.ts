@@ -47,4 +47,49 @@ describe("ciex inbound route", () => {
       },
     });
   });
+
+  it("returns a safe validation response for malformed payloads", async () => {
+    vi.doMock("@/lib/server/integrations/ciex-inbound-service", async () => {
+      return {
+        ciexInboundPayloadSchema: {
+          parse: vi.fn(() => {
+            const { ApiError } = require("@/lib/server/api/errors");
+            throw new ApiError(400, "VALIDATION_ERROR", "Request validation failed.", {
+              issues: {
+                fieldErrors: {
+                  externalId: ["External issue id is required."],
+                },
+                formErrors: [],
+              },
+            });
+          }),
+        },
+        ingestCiexInboundIssue: vi.fn(),
+      };
+    });
+
+    const { POST } = await import("@/app/api/integrations/ciex/inbound/route");
+    const response = await POST(
+      new Request("https://example.com", {
+        method: "POST",
+        body: JSON.stringify({ externalId: "" }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "validation_failed",
+        message: "Request validation failed.",
+        details: {
+          issues: {
+            fieldErrors: {
+              externalId: ["External issue id is required."],
+            },
+            formErrors: [],
+          },
+        },
+      },
+    });
+  });
 });
