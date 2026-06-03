@@ -1,32 +1,36 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  parse: vi.fn(),
+  ingest: vi.fn(),
+}));
+
+vi.mock("@/lib/server/integrations/ciex-inbound-service", async () => {
+  return {
+    ciexInboundPayloadSchema: {
+      parse: mocks.parse,
+    },
+    ingestCiexInboundIssue: mocks.ingest,
+  };
+});
+
+import { ApiError } from "@/lib/server/api/errors";
+import { POST } from "@/app/api/integrations/ciex/inbound/route";
 
 describe("ciex inbound route", () => {
   beforeEach(() => {
-    vi.resetModules();
     vi.restoreAllMocks();
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.resetModules();
-    vi.restoreAllMocks();
-    vi.clearAllMocks();
-    vi.doUnmock("@/lib/server/integrations/ciex-inbound-service");
+    mocks.parse.mockReset();
+    mocks.ingest.mockReset();
   });
 
   it("returns a safe unauthorized response for invalid integration auth", async () => {
-    vi.doMock("@/lib/server/integrations/ciex-inbound-service", async () => {
-      const { ApiError } = await import("@/lib/server/api/errors");
+    mocks.parse.mockImplementation((value) => value);
+    mocks.ingest.mockRejectedValue(
+      new ApiError(401, "unauthorized", "Authentication required."),
+    );
 
-      return {
-        ciexInboundPayloadSchema: { parse: vi.fn((value) => value) },
-        ingestCiexInboundIssue: vi.fn().mockRejectedValue(
-          new ApiError(401, "unauthorized", "Authentication required."),
-        ),
-      };
-    });
-
-    const { POST } = await import("@/app/api/integrations/ciex/inbound/route");
     const response = await POST(
       new Request("https://example.com", {
         method: "POST",
@@ -49,26 +53,17 @@ describe("ciex inbound route", () => {
   });
 
   it("returns a safe validation response for malformed payloads", async () => {
-    vi.doMock("@/lib/server/integrations/ciex-inbound-service", async () => {
-      return {
-        ciexInboundPayloadSchema: {
-          parse: vi.fn(() => {
-            const { ApiError } = require("@/lib/server/api/errors");
-            throw new ApiError(400, "VALIDATION_ERROR", "Request validation failed.", {
-              issues: {
-                fieldErrors: {
-                  externalId: ["External issue id is required."],
-                },
-                formErrors: [],
-              },
-            });
-          }),
+    mocks.parse.mockImplementation(() => {
+      throw new ApiError(400, "VALIDATION_ERROR", "Request validation failed.", {
+        issues: {
+          fieldErrors: {
+            externalId: ["External issue id is required."],
+          },
+          formErrors: [],
         },
-        ingestCiexInboundIssue: vi.fn(),
-      };
+      });
     });
 
-    const { POST } = await import("@/app/api/integrations/ciex/inbound/route");
     const response = await POST(
       new Request("https://example.com", {
         method: "POST",

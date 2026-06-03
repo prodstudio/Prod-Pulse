@@ -402,6 +402,7 @@ describe("ciex inbound service", () => {
 
   it("accepts the flat CIEX sender payload and normalizes related refs", async () => {
     let externalIssueCalls = 0;
+    let insertedPayload: Record<string, unknown> | null = null;
     const payload = ciexInboundPayloadSchema.parse({
       eventType: "ticket.updated",
       externalId: "ticket-123",
@@ -412,9 +413,9 @@ describe("ciex inbound service", () => {
       priority: "high",
       sourceUrl: "javascript:alert(1)",
       customerReference: "Acme Corp",
-      relatedAppId: "00000000-0000-0000-0000-000000000001",
-      relatedEnvironmentId: "00000000-0000-0000-0000-000000000002",
-      relatedMonitorId: "00000000-0000-0000-0000-000000000003",
+      relatedAppId: "11111111-1111-4111-8111-111111111111",
+      relatedEnvironmentId: "22222222-2222-4222-8222-222222222222",
+      relatedMonitorId: "33333333-3333-4333-8333-333333333333",
       sourceCreatedAt: "2026-06-03T15:00:00.000Z",
       sourceUpdatedAt: "2026-06-03T15:01:00.000Z",
     });
@@ -439,9 +440,37 @@ describe("ciex inbound service", () => {
             eq: vi.fn().mockReturnThis(),
             maybeSingle: vi.fn().mockResolvedValue({
               data: createScopedLookupRow(
-                "00000000-0000-0000-0000-000000000003",
-                "00000000-0000-0000-0000-000000000001",
-                "00000000-0000-0000-0000-000000000002",
+                "33333333-3333-4333-8333-333333333333",
+                "11111111-1111-4111-8111-111111111111",
+                "22222222-2222-4222-8222-222222222222",
+              ),
+              error: null,
+            }),
+          };
+        }
+
+        if (table === "monitored_apps") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: createScopedLookupRow(
+                "11111111-1111-4111-8111-111111111111",
+                null,
+              ),
+              error: null,
+            }),
+          };
+        }
+
+        if (table === "app_environments") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: createScopedLookupRow(
+                "22222222-2222-4222-8222-222222222222",
+                "11111111-1111-4111-8111-111111111111",
               ),
               error: null,
             }),
@@ -459,19 +488,24 @@ describe("ciex inbound service", () => {
           }
 
           return {
-            insert: vi.fn().mockReturnThis(),
-            select: vi.fn().mockReturnThis(),
-            single: vi.fn().mockResolvedValue({
-              data: createIssueRow({
-                source_url: null,
-                related_app_id: "00000000-0000-0000-0000-000000000001",
-                related_environment_id: "00000000-0000-0000-0000-000000000002",
-                related_monitor_id: "00000000-0000-0000-0000-000000000003",
-                source_created_at: "2026-06-03T15:00:00.000Z",
-                source_updated_at: "2026-06-03T15:01:00.000Z",
-              }),
-              error: null,
+            insert: vi.fn((input: Record<string, unknown>) => {
+              insertedPayload = input;
+              return {
+                select: vi.fn().mockReturnThis(),
+                single: vi.fn().mockResolvedValue({
+                  data: createIssueRow({
+                    source_url: null,
+                    related_app_id: "11111111-1111-4111-8111-111111111111",
+                    related_environment_id: "22222222-2222-4222-8222-222222222222",
+                    related_monitor_id: "33333333-3333-4333-8333-333333333333",
+                    source_created_at: "2026-06-03T15:00:00.000Z",
+                    source_updated_at: "2026-06-03T15:01:00.000Z",
+                  }),
+                  error: null,
+                }),
+              };
             }),
+            select: vi.fn().mockReturnThis(),
           };
         }
 
@@ -505,9 +539,11 @@ describe("ciex inbound service", () => {
     expect(result.created).toBe(true);
     expect(result.updated).toBe(false);
     expect(result.issue.sourceUrl).toBeNull();
-    expect(result.issue.relatedAppId).toBe("00000000-0000-0000-0000-000000000001");
-    expect(result.issue.relatedEnvironmentId).toBe("00000000-0000-0000-0000-000000000002");
-    expect(result.issue.relatedMonitorId).toBe("00000000-0000-0000-0000-000000000003");
+    expect(insertedPayload).toMatchObject({
+      related_app_id: "11111111-1111-4111-8111-111111111111",
+      related_environment_id: "22222222-2222-4222-8222-222222222222",
+      related_monitor_id: "33333333-3333-4333-8333-333333333333",
+    });
   });
 
   it("rejects invalid inbound keys with a safe unauthorized error", async () => {
