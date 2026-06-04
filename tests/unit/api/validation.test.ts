@@ -49,4 +49,29 @@ describe("request validation", () => {
       }),
     ).toThrow(ApiError);
   });
+
+  it("accepts the alert rule payload shape submitted by the rules form", () => {
+    const payload = parseSchema(createAlertRuleSchema, {
+      name: "Piem forced failure Slack alerts",
+      appId: "f785d9c3-f0be-4df6-a652-131c655611a2",
+      monitorId: "864adfa1-5ac5-4bdf-9e72-bd43ec26d9cf",
+      isEnabled: true,
+      severityFilter: ["warning", "critical", "emergency"],
+      sendRecovery: true,
+      notifyOnDegraded: true,
+      dedupeWindowSeconds: 120,
+      maxRetryAttempts: 5,
+      backoffStrategy: "exponential",
+      eventTypes: ["incident_created", "incident_recovered", "incident_resolved"],
+      notificationChannelIds: ["846b8c6e-dec6-4239-9a83-49f3c4500f4a"],
+    });
+
+    expect(payload).toMatchObject({
+      appId: "f785d9c3-f0be-4df6-a652-131c655611a2",
+      monitorId: "864adfa1-5ac5-4bdf-9e72-bd43ec26d9cf",
+      severityFilter: ["warning", "critical", "emergency"],
+      eventTypes: ["incident_created", "incident_recovered", "incident_resolved"],
+      notificationChannelIds: ["846b8c6e-dec6-4239-9a83-49f3c4500f4a"],
+    });
+  });
 });

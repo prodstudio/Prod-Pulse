@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 
 import { NoOrganizationState } from "@/components/layout/no-organization-state";
 import {
@@ -66,6 +66,8 @@ export default async function AlertRulesPage({
       redirect("/alerts/rules?error=forbidden");
     }
 
+    let redirectTarget = "/alerts/rules?status=created";
+
     try {
       await createAlertRule(
         {
@@ -97,11 +99,12 @@ export default async function AlertRulesPage({
             .map((value) => String(value)),
         }),
       );
-
-      redirect("/alerts/rules?status=created");
     } catch (error) {
-      redirect(`/alerts/rules?error=${getActionErrorRedirectValue(error)}`);
+      unstable_rethrow(error);
+      redirectTarget = `/alerts/rules?error=${getActionErrorRedirectValue(error)}`;
     }
+
+    redirect(redirectTarget);
   }
 
   async function toggleRuleAction(formData: FormData) {
@@ -117,6 +120,8 @@ export default async function AlertRulesPage({
       redirect("/alerts/rules?error=forbidden");
     }
 
+    let redirectTarget = "/alerts/rules?status=updated";
+
     try {
       await updateAlertRule(
         {
@@ -129,11 +134,12 @@ export default async function AlertRulesPage({
           isEnabled: formData.get("nextValue") === "true",
         },
       );
-
-      redirect("/alerts/rules?status=updated");
     } catch (error) {
-      redirect(`/alerts/rules?error=${getActionErrorRedirectValue(error)}`);
+      unstable_rethrow(error);
+      redirectTarget = `/alerts/rules?error=${getActionErrorRedirectValue(error)}`;
     }
+
+    redirect(redirectTarget);
   }
 
   async function deleteRuleAction(formData: FormData) {
@@ -149,6 +155,8 @@ export default async function AlertRulesPage({
       redirect("/alerts/rules?error=forbidden");
     }
 
+    let redirectTarget = "/alerts/rules?status=deleted";
+
     try {
       await deleteAlertRule(
         {
@@ -158,11 +166,12 @@ export default async function AlertRulesPage({
         },
         String(formData.get("ruleId") ?? ""),
       );
-
-      redirect("/alerts/rules?status=deleted");
     } catch (error) {
-      redirect(`/alerts/rules?error=${getActionErrorRedirectValue(error)}`);
+      unstable_rethrow(error);
+      redirectTarget = `/alerts/rules?error=${getActionErrorRedirectValue(error)}`;
     }
+
+    redirect(redirectTarget);
   }
 
   return (
