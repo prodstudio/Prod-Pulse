@@ -10,7 +10,7 @@ const navItems = [
   { label: "Integrations", href: "/integrations/ciex", active: true },
   { label: "Heartbeats", href: "/heartbeats", active: true },
   { label: "Status Preview", href: "/status-pages", active: true },
-  { label: "Settings", href: "#", active: false },
+  { label: "Settings", href: "/alerts/channels", active: true },
 ];
 
 export function AppSidebar() {
