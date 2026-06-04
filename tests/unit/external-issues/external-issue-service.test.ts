@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createAndLinkExternalIssueReference,
   linkExternalIssueToIncident,
+  listCiexExternalIssuesForOrganization,
   listLinkedExternalIssuesForIncident,
   listSuggestedExternalIssuesForIncident,
   unlinkExternalIssueFromIncident,
@@ -413,5 +414,56 @@ describe("external issue service", () => {
       "issue-monitor-match",
       "issue-app-only",
     ]);
+  });
+
+  it("lists CIEX external issues for the active organization only", async () => {
+    const adminClient = {
+      from: vi.fn((table: string) => {
+        if (table === "memberships") {
+          return createMembershipChain();
+        }
+        if (table === "external_issues") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            order: vi.fn().mockResolvedValue({
+              data: [
+                createExternalIssueRow({
+                  id: "issue-2",
+                  external_id: "ticket-2",
+                  external_key: "CIEX-2",
+                  title: "Newer ticket",
+                  updated_at: "2026-06-02T00:03:00Z",
+                }),
+                createExternalIssueRow({
+                  id: "issue-1",
+                  external_id: "ticket-1",
+                  external_key: "CIEX-1",
+                  title: "Older ticket",
+                  updated_at: "2026-06-02T00:01:00Z",
+                }),
+              ],
+              error: null,
+            }),
+          };
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    };
+
+    const issues = await listCiexExternalIssuesForOrganization(
+      "user-1",
+      "org-1",
+      adminClient as never,
+    );
+
+    expect(issues.map((issue) => issue.id)).toEqual(["issue-2", "issue-1"]);
+    expect(issues[0]).toEqual(
+      expect.objectContaining({
+        sourceKind: "ciex",
+        externalKey: "CIEX-2",
+        title: "Newer ticket",
+      }),
+    );
   });
 });

@@ -453,6 +453,29 @@ export async function listLinkedExternalIssuesForIncident(
   });
 }
 
+export async function listCiexExternalIssuesForOrganization(
+  userId: string,
+  organizationId?: string,
+  adminClient: AdminLike = createSupabaseAdminClient(),
+): Promise<SafeExternalIssue[]> {
+  const context = await requireOrgMembership(userId, organizationId, adminClient);
+
+  const { data, error } = await adminClient
+    .from("external_issues")
+    .select(EXTERNAL_ISSUE_SELECT)
+    .eq("organization_id", context.organization.id)
+    .eq("source_kind", "ciex")
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw mapPostgresError(error);
+  }
+
+  return ((data ?? []) as unknown[])
+    .map((row) => mapExternalIssueRow(toExternalIssueLookupRow(row)))
+    .map((issue) => toSafeExternalIssue(issue));
+}
+
 export async function updateIncidentCustomerImpact(
   context: ExternalIssueServiceContext,
   incidentId: string,
