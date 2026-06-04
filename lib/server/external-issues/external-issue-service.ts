@@ -25,7 +25,10 @@ import {
   type RawExternalIssueRecord,
   type SafeExternalIssue,
 } from "@/lib/server/external-issues/external-issue-sanitization";
-import { sanitizeIncidentText } from "@/lib/server/incidents/incident-sanitization";
+import {
+  sanitizeIncidentText,
+  sanitizeIncidentTitle,
+} from "@/lib/server/incidents/incident-sanitization";
 
 type AdminLike = ReturnType<typeof createSupabaseAdminClient>;
 
@@ -59,6 +62,25 @@ export const updateIncidentCustomerImpactSchema = z.object({
 
 export type CreateExternalIssueReferenceInput = z.infer<typeof createExternalIssueReferenceSchema>;
 export type UpdateIncidentCustomerImpactInput = z.infer<typeof updateIncidentCustomerImpactSchema>;
+
+export type SafeLinkedIncidentSummary = {
+  id: string;
+  title: string;
+  status: "detected" | "open" | "acknowledged" | "investigating" | "monitoring" | "resolved";
+  severity: "info" | "warning" | "critical" | "emergency";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SafeExternalIssueListItem = SafeExternalIssue & {
+  linkedIncidentCount: number;
+};
+
+export type SafeExternalIssueDetail = SafeExternalIssue & {
+  linkedIncidentCount: number;
+  linkedIncidents: SafeLinkedIncidentSummary[];
+  canCreateIncident: boolean;
+};
 
 function mapExternalIssueRow(row: ExternalIssueLookupRow): RawExternalIssueRecord {
   return {
@@ -457,7 +479,7 @@ export async function listCiexExternalIssuesForOrganization(
   userId: string,
   organizationId?: string,
   adminClient: AdminLike = createSupabaseAdminClient(),
-): Promise<SafeExternalIssue[]> {
+): Promise<SafeExternalIssueListItem[]> {
   const context = await requireOrgMembership(userId, organizationId, adminClient);
 
   const { data, error } = await adminClient
@@ -471,9 +493,225 @@ export async function listCiexExternalIssuesForOrganization(
     throw mapPostgresError(error);
   }
 
-  return ((data ?? []) as unknown[])
-    .map((row) => mapExternalIssueRow(toExternalIssueLookupRow(row)))
-    .map((issue) => toSafeExternalIssue(issue));
+  const issues = ((data ?? []) as unknown[])
+    .map((row) => mapExternalIssueRow(toExternalIssueLookupRow(row)));
+
+  if (issues.length === 0) {
+    return [];
+  }
+
+  const issueIds = issues.map((issue) => issue.id);
+  const { data: links, error: linksError } = await adminClient
+    .from("incident_external_issues")
+    .select("external_issue_id")
+    .eq("organization_id", context.organization.id)
+    .in("external_issue_id", issueIds);
+
+  if (linksError) {
+    throw mapPostgresError(linksError);
+  }
+
+  const linkedCountByIssueId = new Map<string, number>();
+  for (const row of (links ?? []) as Record<string, unknown>[]) {
+    const externalIssueId = String(row.external_issue_id);
+    linkedCountByIssueId.set(
+      externalIssueId,
+      (linkedCountByIssueId.get(externalIssueId) ?? 0) + 1,
+    );
+  }
+
+  return issues.map((issue) => ({
+    ...toSafeExternalIssue(issue),
+    linkedIncidentCount: linkedCountByIssueId.get(issue.id) ?? 0,
+  }));
+}
+
+function mapLinkedIncidentRow(row: Record<string, unknown>): SafeLinkedIncidentSummary {
+  return {
+    id: String(row.id),
+    title: sanitizeIncidentTitle(String(row.title)),
+    status: String(row.status) as SafeLinkedIncidentSummary["status"],
+    severity: String(row.severity) as SafeLinkedIncidentSummary["severity"],
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+export async function getExternalIssueDetailById(
+  userId: string,
+  externalIssueId: string,
+  organizationId?: string,
+  adminClient: AdminLike = createSupabaseAdminClient(),
+): Promise<SafeExternalIssueDetail> {
+  const organizationContext = await requireOrgMembership(userId, organizationId, adminClient);
+  const issue = await getExternalIssueRecord(
+    organizationContext.organization.id,
+    externalIssueId,
+    adminClient,
+  );
+
+  const { data: links, error: linksError } = await adminClient
+    .from("incident_external_issues")
+    .select("incident_id")
+    .eq("organization_id", organizationContext.organization.id)
+    .eq("external_issue_id", issue.id);
+
+  if (linksError) {
+    throw mapPostgresError(linksError);
+  }
+
+  const incidentIds = ((links ?? []) as Record<string, unknown>[]).map((row) =>
+    String(row.incident_id),
+  );
+
+  let linkedIncidents: SafeLinkedIncidentSummary[] = [];
+
+  if (incidentIds.length > 0) {
+    const { data: incidents, error: incidentsError } = await adminClient
+      .from("incidents")
+      .select("id, title, status, severity, created_at, updated_at")
+      .eq("organization_id", organizationContext.organization.id)
+      .in("id", incidentIds)
+      .order("created_at", { ascending: false });
+
+    if (incidentsError) {
+      throw mapPostgresError(incidentsError);
+    }
+
+    linkedIncidents = ((incidents ?? []) as Record<string, unknown>[]).map((row) =>
+      mapLinkedIncidentRow(row),
+    );
+  }
+
+  return {
+    ...toSafeExternalIssue(issue),
+    linkedIncidentCount: linkedIncidents.length,
+    linkedIncidents,
+    canCreateIncident: Boolean(issue.relatedAppId && issue.relatedMonitorId),
+  };
+}
+
+function mapExternalIssuePriorityToIncidentSeverity(priority: string | null) {
+  const normalized = priority?.trim().toLowerCase() ?? "";
+
+  if (["critical", "urgent", "p1", "high"].includes(normalized)) {
+    return "critical" as const;
+  }
+
+  if (["medium", "normal", "moderate", "p2"].includes(normalized)) {
+    return "warning" as const;
+  }
+
+  return "info" as const;
+}
+
+export async function createIncidentFromExternalIssue(
+  context: ExternalIssueServiceContext,
+  externalIssueId: string,
+  adminClient: AdminLike = createSupabaseAdminClient(),
+) {
+  await requireOrgMembership(context.userId, context.organization.id, adminClient);
+
+  const issue = await getExternalIssueRecord(context.organization.id, externalIssueId, adminClient);
+
+  if (!issue.relatedAppId || !issue.relatedMonitorId) {
+    throw new ApiError(
+      400,
+      "INVALID_RELATION",
+      "This external issue does not have enough internal context to create an incident.",
+    );
+  }
+
+  const now = new Date().toISOString();
+  const dedupeKey = `external_issue:${issue.id}`;
+  const summaryParts = [
+    issue.summary,
+    issue.customerReference ? `Customer reference: ${issue.customerReference}` : null,
+    issue.externalKey ? `External key: ${issue.externalKey}` : null,
+    issue.externalId ? `External id: ${issue.externalId}` : null,
+  ].filter(Boolean);
+
+  const { data: incidentData, error: incidentError } = await adminClient
+    .from("incidents")
+    .insert({
+      organization_id: context.organization.id,
+      app_id: issue.relatedAppId,
+      environment_id: issue.relatedEnvironmentId ?? null,
+      monitor_id: issue.relatedMonitorId,
+      created_from_result_id: null,
+      title: sanitizeIncidentTitle(issue.title),
+      summary: sanitizeIncidentText(summaryParts.join("\n\n")),
+      severity: mapExternalIssuePriorityToIncidentSeverity(issue.priority),
+      status: "open",
+      dedupe_key: dedupeKey,
+      assigned_to: null,
+      opened_by: context.userId,
+      detected_at: now,
+      opened_at: now,
+      acknowledged_at: null,
+      recovered_at: null,
+      resolved_at: null,
+      auto_resolve_on_recovery: false,
+      root_cause: null,
+      resolution_notes: null,
+      last_state_change_at: now,
+    })
+    .select("id, title, status, severity, created_at, updated_at")
+    .single();
+
+  if (incidentError) {
+    throw mapPostgresError(incidentError);
+  }
+
+  const incident = mapLinkedIncidentRow(incidentData as Record<string, unknown>);
+
+  const { error: linkError } = await adminClient.from("incident_external_issues").upsert(
+    {
+      organization_id: context.organization.id,
+      incident_id: incident.id,
+      external_issue_id: issue.id,
+      linked_by: context.userId,
+    },
+    {
+      onConflict: "organization_id,incident_id,external_issue_id",
+      ignoreDuplicates: true,
+    },
+  );
+
+  if (linkError) {
+    throw mapPostgresError(linkError);
+  }
+
+  const { error: updateError } = await adminClient.from("incident_updates").insert({
+    organization_id: context.organization.id,
+    incident_id: incident.id,
+    actor_type: "user",
+    actor_user_id: context.userId,
+    status_from: null,
+    status_to: "open",
+    message: sanitizeIncidentText(`Created from CIEX external issue ${issue.externalKey ?? issue.externalId}.`),
+  });
+
+  if (updateError) {
+    throw mapPostgresError(updateError);
+  }
+
+  await writeAuditLog({
+    organizationId: context.organization.id,
+    actorType: "user",
+    actorUserId: context.userId,
+    actionType: "create",
+    targetTable: "incidents",
+    targetId: incident.id,
+    metadata: {
+      action: "create_from_external_issue",
+      incident,
+      externalIssue: sanitizeExternalIssueForAudit(issue),
+    },
+    request: context.request,
+  });
+
+  return incident;
 }
 
 export async function updateIncidentCustomerImpact(

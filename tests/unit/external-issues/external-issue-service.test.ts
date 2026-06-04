@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  createIncidentFromExternalIssue,
   createAndLinkExternalIssueReference,
+  getExternalIssueDetailById,
   linkExternalIssueToIncident,
   listCiexExternalIssuesForOrganization,
   listLinkedExternalIssuesForIncident,
@@ -101,6 +103,18 @@ function createExternalIssueLookupChain(result: { data: unknown; error: null }) 
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn().mockResolvedValue(result),
+  };
+}
+
+function createLinkedIncidentsChain(rows: unknown[]) {
+  return {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
+    order: vi.fn().mockResolvedValue({
+      data: rows,
+      error: null,
+    }),
   };
 }
 
@@ -278,6 +292,124 @@ describe("external issue service", () => {
     });
   });
 
+  it("fetches external issue detail for the same organization", async () => {
+    let externalIssueCalls = 0;
+    let incidentExternalIssueCalls = 0;
+
+    const adminClient = {
+      from: vi.fn((table: string) => {
+        if (table === "memberships") {
+          return createMembershipChain();
+        }
+        if (table === "external_issues") {
+          externalIssueCalls += 1;
+          if (externalIssueCalls === 1) {
+            return createExternalIssueLookupChain({
+              data: createExternalIssueRow({
+                related_app_id: "app-1",
+                related_monitor_id: "monitor-1",
+              }),
+              error: null,
+            });
+          }
+          throw new Error(`Unexpected external_issues call: ${externalIssueCalls}`);
+        }
+        if (table === "incident_external_issues") {
+          incidentExternalIssueCalls += 1;
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            data: [],
+          };
+        }
+        if (table === "incidents") {
+          return createLinkedIncidentsChain([
+            {
+              id: "incident-1",
+              title: "Customer cannot sign in",
+              status: "open",
+              severity: "warning",
+              created_at: "2026-06-02T00:00:00Z",
+              updated_at: "2026-06-02T00:01:00Z",
+            },
+          ]);
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    };
+
+    // override incident links chain with resolved value
+    adminClient.from = vi.fn((table: string) => {
+      if (table === "memberships") return createMembershipChain();
+      if (table === "external_issues") {
+        return createExternalIssueLookupChain({
+          data: createExternalIssueRow({
+            related_app_id: "app-1",
+            related_monitor_id: "monitor-1",
+          }),
+          error: null,
+        });
+      }
+      if (table === "incident_external_issues") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          then(resolve: (value: { data: Array<{ incident_id: string }>; error: null }) => unknown) {
+            return Promise.resolve(resolve({ data: [{ incident_id: "incident-1" }], error: null }));
+          },
+        };
+      }
+      if (table === "incidents") {
+        return createLinkedIncidentsChain([
+          {
+            id: "incident-1",
+            title: "Customer cannot sign in",
+            status: "open",
+            severity: "warning",
+            created_at: "2026-06-02T00:00:00Z",
+            updated_at: "2026-06-02T00:01:00Z",
+          },
+        ]);
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    const issue = await getExternalIssueDetailById(
+      "user-1",
+      "issue-1",
+      "org-1",
+      adminClient as never,
+    );
+
+    expect(issue.id).toBe("issue-1");
+    expect(issue.linkedIncidents).toHaveLength(1);
+    expect(issue.canCreateIncident).toBe(true);
+  });
+
+  it("rejects cross-org external issue detail access", async () => {
+    const adminClient = {
+      from: vi.fn((table: string) => {
+        if (table === "memberships") {
+          return createMembershipChain();
+        }
+        if (table === "external_issues") {
+          return createExternalIssueLookupChain({
+            data: null,
+            error: null,
+          });
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    };
+
+    await expect(
+      getExternalIssueDetailById("user-1", "issue-cross-org", "org-1", adminClient as never),
+    ).rejects.toMatchObject({
+      status: 404,
+      code: "RESOURCE_NOT_FOUND",
+    });
+  });
+
   it("lists and unlinks external issues through org-scoped lookups", async () => {
     let externalIssueCalls = 0;
     let incidentExternalIssueCalls = 0;
@@ -447,6 +579,16 @@ describe("external issue service", () => {
             }),
           };
         }
+        if (table === "incident_external_issues") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            in: vi.fn().mockResolvedValue({
+              data: [{ external_issue_id: "issue-2" }],
+              error: null,
+            }),
+          };
+        }
         throw new Error(`Unexpected table: ${table}`);
       }),
     };
@@ -463,7 +605,75 @@ describe("external issue service", () => {
         sourceKind: "ciex",
         externalKey: "CIEX-2",
         title: "Newer ticket",
+        linkedIncidentCount: 1,
       }),
     );
+    expect(issues[1]?.linkedIncidentCount).toBe(0);
+  });
+
+  it("creates an incident from an external issue and links it in the same org", async () => {
+    let incidentExternalIssueCalls = 0;
+    const adminClient = {
+      from: vi.fn((table: string) => {
+        if (table === "memberships") {
+          return createMembershipChain();
+        }
+        if (table === "external_issues") {
+          return createExternalIssueLookupChain({
+            data: createExternalIssueRow({
+              related_app_id: "app-1",
+              related_environment_id: "env-1",
+              related_monitor_id: "monitor-1",
+              priority: "high",
+            }),
+            error: null,
+          });
+        }
+        if (table === "incidents") {
+          return {
+            insert: vi.fn().mockReturnThis(),
+            select: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: "incident-new",
+                title: "Customer cannot sign in",
+                status: "open",
+                severity: "critical",
+                created_at: "2026-06-02T00:00:00Z",
+                updated_at: "2026-06-02T00:00:00Z",
+              },
+              error: null,
+            }),
+          };
+        }
+        if (table === "incident_external_issues") {
+          incidentExternalIssueCalls += 1;
+          return {
+            upsert: vi.fn().mockResolvedValue({ error: null }),
+          };
+        }
+        if (table === "incident_updates") {
+          return {
+            insert: vi.fn().mockResolvedValue({ error: null }),
+          };
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    };
+
+    const incident = await createIncidentFromExternalIssue(
+      createContext(),
+      "issue-1",
+      adminClient as never,
+    );
+
+    expect(incident).toEqual(
+      expect.objectContaining({
+        id: "incident-new",
+        status: "open",
+        severity: "critical",
+      }),
+    );
+    expect(incidentExternalIssueCalls).toBe(1);
   });
 });

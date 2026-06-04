@@ -85,7 +85,12 @@ export default async function ExternalIssuesPage() {
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0 flex-1 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-base font-semibold tracking-tight">{issue.title}</p>
+                      <Link
+                        href={`/external-issues/${issue.id}`}
+                        className="text-base font-semibold tracking-tight hover:underline"
+                      >
+                        {issue.title}
+                      </Link>
                       <span
                         className={`rounded-full border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${statusBadgeClass(issue.status)}`}
                       >
@@ -93,6 +98,9 @@ export default async function ExternalIssuesPage() {
                       </span>
                       <span className="rounded-full border border-border px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                         {formatLabel(issue.priority, "unprioritized")}
+                      </span>
+                      <span className="rounded-full border border-border px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                        {issue.linkedIncidentCount > 0 ? `linked ${issue.linkedIncidentCount}` : "unlinked"}
                       </span>
                     </div>
 
