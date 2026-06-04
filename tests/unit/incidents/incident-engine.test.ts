@@ -257,6 +257,89 @@ describe("incident engine", () => {
     expect(outcome).toMatchObject({ created: false, updated: true, action: "opened" });
   });
 
+  it("uses the current result trigger source when evaluating manual incident automation", async () => {
+    const triggerEqCalls: string[] = [];
+    const incidentInsert = createIncidentInsertChain({
+      data: {
+        id: "incident-manual-1",
+        organization_id: "org-1",
+        app_id: "app-1",
+        environment_id: "env-1",
+        monitor_id: "monitor-1",
+        created_from_result_id: "result-manual-1",
+        title: "API health is down",
+        summary: "The endpoint responded with HTTP 503.",
+        severity: "critical",
+        status: "detected",
+        dedupe_key: "primary_failure",
+        assigned_to: null,
+        opened_by: null,
+        detected_at: "2026-06-01T00:00:00Z",
+        opened_at: null,
+        acknowledged_at: null,
+        recovered_at: null,
+        resolved_at: null,
+        auto_resolve_on_recovery: false,
+        root_cause: null,
+        resolution_notes: null,
+        last_state_change_at: "2026-06-01T00:00:00Z",
+        created_at: "2026-06-01T00:00:00Z",
+        updated_at: "2026-06-01T00:00:00Z",
+      },
+      error: null,
+    });
+
+    const statusChain = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn((column: string, value: string) => {
+        if (column === "trigger_source") {
+          triggerEqCalls.push(value);
+        }
+        return statusChain;
+      }),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue({
+        data: [{ id: "result-manual-1", status: "failure" }],
+        error: null,
+      }),
+    };
+
+    const adminClient = {
+      from: vi.fn((table: string) => {
+        if (table === "monitor_results") {
+          return statusChain;
+        }
+        if (table === "incidents") {
+          return adminClient.from.mock.calls.length === 2
+            ? createIncidentSelectChain({ data: null, error: null })
+            : incidentInsert;
+        }
+        if (table === "incident_updates") {
+          return createIncidentUpdatesInsert();
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    };
+
+    const outcome = await processScheduledIncidentState(
+      {
+        monitor: createMonitor({ consecutiveFailureThreshold: 1 }),
+        result: createResult({
+          id: "result-manual-1",
+          triggerSource: "manual",
+        }),
+      },
+      adminClient as never,
+    );
+
+    expect(outcome).toMatchObject({
+      created: true,
+      action: "created",
+      incidentId: "incident-manual-1",
+    });
+    expect(triggerEqCalls).toContain("manual");
+  });
+
   it("allows a future incident after the prior one is resolved", async () => {
     const statusRows = [
       { id: "result-2", status: "failure" },

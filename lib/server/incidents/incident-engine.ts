@@ -122,8 +122,23 @@ function getAutoResolveOnRecovery(monitor: RunnerMonitorRecord) {
   return false;
 }
 
-async function getRecentScheduledStatuses(
+function getTriggerSourceLabel(triggerSource: SafeMonitorResult["triggerSource"]) {
+  switch (triggerSource) {
+    case "manual":
+      return "manual";
+    case "heartbeat":
+      return "heartbeat";
+    case "retry":
+      return "retry";
+    case "scheduled":
+    default:
+      return "scheduled";
+  }
+}
+
+async function getRecentMonitorStatuses(
   monitor: RunnerMonitorRecord,
+  triggerSource: SafeMonitorResult["triggerSource"],
   adminClient: AdminLike,
 ) {
   const limit = Math.max(monitor.consecutiveFailureThreshold, monitor.consecutiveRecoveryThreshold) * 4;
@@ -132,7 +147,7 @@ async function getRecentScheduledStatuses(
     .select("id, status")
     .eq("organization_id", monitor.organizationId)
     .eq("monitor_id", monitor.id)
-    .eq("trigger_source", "scheduled")
+    .eq("trigger_source", triggerSource)
     .order("checked_at", { ascending: false })
     .limit(Math.max(limit, 12));
 
@@ -195,6 +210,7 @@ export async function processScheduledIncidentState(
   adminClient: AdminLike = createSupabaseAdminClient(),
 ): Promise<IncidentEngineOutcome> {
   const { monitor, result, suppressedByMaintenanceWindowId } = input;
+  const triggerSourceLabel = getTriggerSourceLabel(result.triggerSource);
 
   if (suppressedByMaintenanceWindowId && INCIDENT_ACTIVE_RESULT_STATUSES.has(result.status)) {
     return {
@@ -206,7 +222,7 @@ export async function processScheduledIncidentState(
   }
 
   const [recentStatuses, unresolvedIncident] = await Promise.all([
-    getRecentScheduledStatuses(monitor, adminClient),
+    getRecentMonitorStatuses(monitor, result.triggerSource, adminClient),
     getUnresolvedIncident(monitor, adminClient),
   ]);
 
@@ -283,7 +299,7 @@ export async function processScheduledIncidentState(
         incident,
         null,
         "detected",
-        `Incident detected after ${consecutiveIncidentStatuses} consecutive non-success scheduled checks.`,
+        `Incident detected after ${consecutiveIncidentStatuses} consecutive non-success ${triggerSourceLabel} checks.`,
         adminClient,
       );
       await writeAuditLog({
@@ -365,8 +381,8 @@ export async function processScheduledIncidentState(
         unresolvedIncident.status,
         nextStatus,
         nextStatus === "open"
-          ? "Incident remains active after another scheduled failure."
-          : "Incident updated by the scheduled incident engine.",
+          ? `Incident remains active after another ${triggerSourceLabel} failure.`
+          : `Incident updated by the ${triggerSourceLabel} incident engine.`,
         adminClient,
       );
 
@@ -461,8 +477,8 @@ export async function processScheduledIncidentState(
     unresolvedIncident.status,
     nextStatus,
     nextStatus === "resolved"
-      ? `Incident auto-resolved after ${consecutiveSuccessfulStatuses} consecutive successful scheduled checks.`
-      : `Incident moved to monitoring after ${consecutiveSuccessfulStatuses} consecutive successful scheduled checks.`,
+      ? `Incident auto-resolved after ${consecutiveSuccessfulStatuses} consecutive successful ${triggerSourceLabel} checks.`
+      : `Incident moved to monitoring after ${consecutiveSuccessfulStatuses} consecutive successful ${triggerSourceLabel} checks.`,
     adminClient,
   );
 
