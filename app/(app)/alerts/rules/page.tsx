@@ -28,6 +28,32 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
+function toSafeActionErrorLog(action: string, error: unknown) {
+  const candidate =
+    typeof error === "object" && error !== null ? (error as Record<string, unknown>) : null;
+  const details = candidate?.details;
+  const hint =
+    typeof candidate?.hint === "string"
+      ? candidate.hint
+      : details &&
+          typeof details === "object" &&
+          details !== null &&
+          "hint" in details &&
+          typeof details.hint === "string"
+        ? details.hint
+        : undefined;
+
+  return JSON.stringify({
+    action,
+    errorName: error instanceof Error ? error.name : typeof error,
+    errorMessage: error instanceof Error ? error.message : String(error),
+    code: typeof candidate?.code === "string" ? candidate.code : undefined,
+    statusCode: typeof candidate?.status === "number" ? candidate.status : undefined,
+    details: typeof details === "string" || (details && typeof details === "object") ? details : undefined,
+    hint,
+  });
+}
+
 export default async function AlertRulesPage({
   searchParams,
 }: {
@@ -100,17 +126,7 @@ export default async function AlertRulesPage({
         }),
       );
     } catch (error) {
-      console.error("Alert rule create failed", {
-        name: error instanceof Error ? error.name : typeof error,
-        message: error instanceof Error ? error.message : String(error),
-        code:
-          typeof error === "object" &&
-          error !== null &&
-          "code" in error &&
-          typeof (error as { code?: unknown }).code === "string"
-            ? (error as { code: string }).code
-            : undefined,
-      });
+      console.error(toSafeActionErrorLog("alert_rule_create", error));
       unstable_rethrow(error);
       redirectTarget = `/alerts/rules?error=${getActionErrorRedirectValue(error)}`;
     }

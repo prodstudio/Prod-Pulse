@@ -70,8 +70,8 @@ const RESOURCE_TABLES: Record<ResourceKind, string> = {
 };
 
 const RESOURCE_SELECTS: Record<ResourceKind, string> = {
-  app: "id, organization_id, app_id, environment_id, name, slug",
-  environment: "id, organization_id, app_id, environment_id, name, slug",
+  app: "id, organization_id, name, slug",
+  environment: "id, organization_id, app_id, name, slug",
   monitor: "id, organization_id, app_id, environment_id, name, slug",
   heartbeat: "id, organization_id, app_id, environment_id, monitor_id, name, slug",
   incident: "id, organization_id, app_id, environment_id, monitor_id",
@@ -213,7 +213,13 @@ export async function requireResourceAccess(
     .maybeSingle();
 
   if (error) {
-    throw new ApiError(500, "RESOURCE_LOOKUP_FAILED", error.message);
+    throw new ApiError(500, "RESOURCE_LOOKUP_FAILED", error.message, {
+      code: "code" in error ? error.code ?? null : null,
+      details: "details" in error ? error.details ?? null : null,
+      hint: "hint" in error ? error.hint ?? null : null,
+      resourceKind,
+      table,
+    });
   }
 
   if (!data) {
