@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 
 import { NewMonitorForm } from "@/components/monitors/new-monitor-form";
 import { NoOrganizationState } from "@/components/layout/no-organization-state";
@@ -40,6 +40,9 @@ export default async function NewMonitorPage({
   const errorMessage = getActionErrorMessage(
     typeof params.error === "string" ? params.error : null,
   );
+  const selectedAppId = typeof params.appId === "string" ? params.appId : null;
+  const selectedEnvironmentId =
+    typeof params.environmentId === "string" ? params.environmentId : null;
 
   const apps = await listAppsForOrganization(session.organizationContext.organization.id);
   const environmentsByApp = await Promise.all(
@@ -58,6 +61,14 @@ export default async function NewMonitorPage({
       name: environment.name,
     })),
   );
+  const validInitialAppId = apps.some((app) => app.id === selectedAppId) ? selectedAppId : null;
+  const validInitialEnvironmentId = environmentOptions.some(
+    (environment) =>
+      environment.id === selectedEnvironmentId &&
+      (!validInitialAppId || environment.appId === validInitialAppId),
+  )
+    ? selectedEnvironmentId
+    : null;
 
   async function createMonitorAction(formData: FormData) {
     "use server";
@@ -71,6 +82,8 @@ export default async function NewMonitorPage({
     if (!canManageOperationalConfig(sessionForAction.organizationContext.membership.role)) {
       redirect("/monitors/new?error=Admin%20or%20owner%20access%20is%20required.");
     }
+
+    let redirectTarget = "/alerts/rules?status=monitor_created";
 
     try {
       const input = parseSchema(createMonitorSchema, {
@@ -109,12 +122,16 @@ export default async function NewMonitorPage({
         },
         input,
       );
-
-      redirect(`/monitors/${monitor.id}`);
+      redirectTarget = `/alerts/rules?status=monitor_created&appId=${encodeURIComponent(
+        input.appId,
+      )}&monitorId=${encodeURIComponent(monitor.id)}`;
     } catch (error) {
+      unstable_rethrow(error);
       const errorCode = getActionErrorRedirectValue(error);
       redirect(`/monitors/new?error=${errorCode}`);
     }
+
+    redirect(redirectTarget);
   }
 
   return (
@@ -140,6 +157,8 @@ export default async function NewMonitorPage({
           apps={apps.map((app) => ({ id: app.id, name: app.name }))}
           environments={environmentOptions}
           errorMessage={errorMessage}
+          initialAppId={validInitialAppId}
+          initialEnvironmentId={validInitialEnvironmentId}
         />
       )}
     </div>

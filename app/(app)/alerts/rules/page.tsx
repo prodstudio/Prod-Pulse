@@ -78,6 +78,17 @@ export default async function AlertRulesPage({
     typeof params.error === "string" ? params.error : null,
   );
   const status = typeof params.status === "string" ? params.status : null;
+  const requestedAppId = typeof params.appId === "string" ? params.appId : null;
+  const requestedMonitorId = typeof params.monitorId === "string" ? params.monitorId : null;
+  const selectedMonitor =
+    requestedMonitorId && monitors.some((monitor) => monitor.id === requestedMonitorId)
+      ? monitors.find((monitor) => monitor.id === requestedMonitorId) ?? null
+      : null;
+  const selectedAppId =
+    requestedAppId && apps.some((app) => app.id === requestedAppId)
+      ? requestedAppId
+      : selectedMonitor?.appId ?? null;
+  const defaultRuleName = selectedMonitor ? `${selectedMonitor.name} alerts` : "";
 
   async function createRuleAction(formData: FormData) {
     "use server";
@@ -253,6 +264,7 @@ export default async function AlertRulesPage({
                 name="name"
                 className="w-full rounded-md border border-border bg-background px-3 py-2"
                 placeholder="Primary incident notifications"
+                defaultValue={defaultRuleName}
                 required
               />
             </label>
@@ -261,7 +273,7 @@ export default async function AlertRulesPage({
               <select
                 name="appId"
                 className="w-full rounded-md border border-border bg-background px-3 py-2"
-                defaultValue=""
+                defaultValue={selectedAppId ?? ""}
               >
                 <option value="">All apps</option>
                 {apps.map((app) => (
@@ -276,7 +288,7 @@ export default async function AlertRulesPage({
               <select
                 name="monitorId"
                 className="w-full rounded-md border border-border bg-background px-3 py-2"
-                defaultValue=""
+                defaultValue={selectedMonitor?.id ?? ""}
               >
                 <option value="">All monitors</option>
                 {monitors.map((monitor) => (

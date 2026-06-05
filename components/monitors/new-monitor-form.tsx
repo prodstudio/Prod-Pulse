@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type AppOption = {
   id: string;
@@ -17,6 +17,8 @@ type NewMonitorFormProps = {
   apps: AppOption[];
   environments: EnvironmentOption[];
   errorMessage?: string | null;
+  initialAppId?: string | null;
+  initialEnvironmentId?: string | null;
   action: (formData: FormData) => void | Promise<void>;
 };
 
@@ -24,14 +26,35 @@ export function NewMonitorForm({
   apps,
   environments,
   errorMessage,
+  initialAppId,
+  initialEnvironmentId,
   action,
 }: NewMonitorFormProps) {
-  const [selectedAppId, setSelectedAppId] = useState(apps[0]?.id ?? "");
+  const resolvedInitialAppId =
+    initialAppId && apps.some((app) => app.id === initialAppId) ? initialAppId : (apps[0]?.id ?? "");
+  const initialEnvironmentForApp =
+    initialEnvironmentId &&
+    environments.some(
+      (environment) =>
+        environment.id === initialEnvironmentId && environment.appId === resolvedInitialAppId,
+    )
+      ? initialEnvironmentId
+      : "";
+  const [selectedAppId, setSelectedAppId] = useState(resolvedInitialAppId);
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState(initialEnvironmentForApp);
 
   const appEnvironments = useMemo(
     () => environments.filter((environment) => environment.appId === selectedAppId),
     [environments, selectedAppId],
   );
+
+  useEffect(() => {
+    if (appEnvironments.some((environment) => environment.id === selectedEnvironmentId)) {
+      return;
+    }
+
+    setSelectedEnvironmentId("");
+  }, [appEnvironments, selectedEnvironmentId]);
 
   return (
     <form action={action} className="space-y-6 rounded-lg border border-border bg-card p-6">
@@ -77,7 +100,8 @@ export function NewMonitorForm({
           <span className="font-medium">Environment</span>
           <select
             name="environmentId"
-            defaultValue=""
+            value={selectedEnvironmentId}
+            onChange={(event) => setSelectedEnvironmentId(event.target.value)}
             className="w-full rounded-md border border-input bg-background px-3 py-2"
           >
             <option value="">No environment</option>
