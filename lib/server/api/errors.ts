@@ -36,7 +36,27 @@ export class ApiError extends Error {
   }
 }
 
-function normalizeErrorCode(error: ApiError): ClientErrorCode {
+type ApiErrorLike = {
+  status: number;
+  code: string;
+  message: string;
+  details?: ErrorDetails;
+};
+
+function isApiErrorLike(error: unknown): error is ApiErrorLike {
+  if (!(error instanceof ApiError) && (typeof error !== "object" || error === null)) {
+    return false;
+  }
+
+  const candidate = error as Partial<ApiErrorLike>;
+  return (
+    typeof candidate.status === "number" &&
+    typeof candidate.code === "string" &&
+    typeof candidate.message === "string"
+  );
+}
+
+function normalizeErrorCode(error: ApiErrorLike): ClientErrorCode {
   switch (error.code) {
     case "VALIDATION_ERROR":
     case "validation_failed":
@@ -78,7 +98,7 @@ function normalizeErrorCode(error: ApiError): ClientErrorCode {
   }
 }
 
-function getSafeClientMessage(error: ApiError, clientCode: ClientErrorCode) {
+function getSafeClientMessage(error: ApiErrorLike, clientCode: ClientErrorCode) {
   switch (clientCode) {
     case "validation_failed":
       return "Request validation failed.";
@@ -98,7 +118,7 @@ function getSafeClientMessage(error: ApiError, clientCode: ClientErrorCode) {
   }
 }
 
-function toClientErrorPayload(error: ApiError): ClientErrorPayload {
+function toClientErrorPayload(error: ApiErrorLike): ClientErrorPayload {
   const clientCode = normalizeErrorCode(error);
   const payload: ClientErrorPayload = {
     error: {
@@ -115,7 +135,7 @@ function toClientErrorPayload(error: ApiError): ClientErrorPayload {
 }
 
 export function createErrorResponse(error: unknown) {
-  if (error instanceof ApiError) {
+  if (isApiErrorLike(error)) {
     return NextResponse.json(toClientErrorPayload(error), { status: error.status });
   }
 
@@ -150,7 +170,7 @@ export function mapPostgresError(error: { code?: string; message: string }) {
 }
 
 export function getActionErrorRedirectValue(error: unknown): ClientErrorCode {
-  if (error instanceof ApiError) {
+  if (isApiErrorLike(error)) {
     return normalizeErrorCode(error);
   }
 

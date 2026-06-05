@@ -207,6 +207,16 @@ function buildRuleConfiguration(input: {
   };
 }
 
+function toPostgresSeverityFilterLiteral(
+  values: Array<"info" | "warning" | "critical" | "emergency">,
+) {
+  if (values.length === 0) {
+    return null;
+  }
+
+  return `{${values.join(",")}}`;
+}
+
 export async function listAlertRulesForOrganization(
   userId: string,
   organizationId?: string,
@@ -266,7 +276,7 @@ export async function createAlertRule(
       monitor_id: input.monitorId ?? null,
       name: input.name,
       is_enabled: input.isEnabled,
-      severity_filter: input.severityFilter.length > 0 ? input.severityFilter : null,
+      severity_filter: toPostgresSeverityFilterLiteral(input.severityFilter),
       send_recovery: input.sendRecovery,
       notify_on_degraded: input.notifyOnDegraded,
       dedupe_window_seconds: input.dedupeWindowSeconds,
@@ -356,7 +366,7 @@ export async function updateAlertRule(
     patch.is_enabled = input.isEnabled;
   }
   if (input.severityFilter !== undefined) {
-    patch.severity_filter = input.severityFilter.length > 0 ? input.severityFilter : null;
+    patch.severity_filter = toPostgresSeverityFilterLiteral(input.severityFilter);
   }
   if (input.sendRecovery !== undefined) {
     patch.send_recovery = input.sendRecovery;

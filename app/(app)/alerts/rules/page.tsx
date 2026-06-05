@@ -100,6 +100,17 @@ export default async function AlertRulesPage({
         }),
       );
     } catch (error) {
+      console.error("Alert rule create failed", {
+        name: error instanceof Error ? error.name : typeof error,
+        message: error instanceof Error ? error.message : String(error),
+        code:
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          typeof (error as { code?: unknown }).code === "string"
+            ? (error as { code: string }).code
+            : undefined,
+      });
       unstable_rethrow(error);
       redirectTarget = `/alerts/rules?error=${getActionErrorRedirectValue(error)}`;
     }
