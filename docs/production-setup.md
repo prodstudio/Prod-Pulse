@@ -20,6 +20,7 @@ These must be marked sensitive in Vercel:
 - `APP_ENCRYPTION_KEY`
 - `CRON_SECRET`
 - `INITIAL_OWNER_BOOTSTRAP_TOKEN`
+- `VERCEL_IMPORT_TOKEN`
 
 ### Server-only non-secret flags
 
@@ -28,6 +29,12 @@ These stay server-side, but they are feature flags rather than secrets:
 - `SLACK_ALERTS_ENABLED`
 - `MONITOR_RUNNER_ENABLED`
 - `ALERT_RUNNER_ENABLED`
+
+### Optional server-only onboarding values
+
+These are only required if you want to import projects from the Vercel account instead of creating monitored apps manually:
+
+- `VERCEL_IMPORT_TEAM_ID` or `VERCEL_IMPORT_TEAM_SLUG`
 
 ## Generate secure values
 
@@ -129,6 +136,9 @@ Operational checks:
 4. If Slack alert delivery should run, confirm:
    - `APP_ENCRYPTION_KEY`
    - `SLACK_ALERTS_ENABLED`
+5. If Vercel project import should be available in `/apps`, confirm:
+   - `VERCEL_IMPORT_TOKEN`
+   - one of `VERCEL_IMPORT_TEAM_ID` or `VERCEL_IMPORT_TEAM_SLUG`
 
 ## Current runtime env contract
 
@@ -144,3 +154,6 @@ Prod Pulse currently reads these runtime env vars:
 - `MONITOR_RUNNER_ENABLED`
 - `ALERT_RUNNER_ENABLED`
 - `NEXT_PUBLIC_APP_URL`
+- `VERCEL_IMPORT_TOKEN`
+- `VERCEL_IMPORT_TEAM_ID`
+- `VERCEL_IMPORT_TEAM_SLUG`

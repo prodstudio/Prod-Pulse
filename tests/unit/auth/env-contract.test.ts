@@ -21,6 +21,9 @@ describe("production env contract", () => {
       "MONITOR_RUNNER_ENABLED",
       "ALERT_RUNNER_ENABLED",
       "NEXT_PUBLIC_APP_URL",
+      "VERCEL_IMPORT_TOKEN",
+      "VERCEL_IMPORT_TEAM_ID",
+      "VERCEL_IMPORT_TEAM_SLUG",
     ];
 
     for (const variable of requiredVariables) {
