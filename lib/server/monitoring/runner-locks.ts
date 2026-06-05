@@ -121,7 +121,23 @@ export async function acquireMonitorLock(
     throw mapPostgresError(error);
   }
 
-  return data ? mapRunnerMonitorRow(data as Record<string, unknown>) : null;
+  if (data) {
+    return mapRunnerMonitorRow(data as Record<string, unknown>);
+  }
+
+  const { data: lockedData, error: lockedError } = await adminClient
+    .from("monitors")
+    .select(RUNNER_MONITOR_SELECT)
+    .eq("id", monitorId)
+    .eq("organization_id", organizationId)
+    .eq("locked_by_run_id", runId)
+    .maybeSingle();
+
+  if (lockedError) {
+    throw mapPostgresError(lockedError);
+  }
+
+  return lockedData ? mapRunnerMonitorRow(lockedData as Record<string, unknown>) : null;
 }
 
 export async function releaseMonitorLock(

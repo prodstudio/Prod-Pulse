@@ -352,6 +352,11 @@ export async function runScheduledMonitorRunner(
 
       if (!lockedMonitor) {
         summary.skippedCount += 1;
+        failureSummary.push({
+          monitorId: candidate.id,
+          status: "skipped",
+          reason: "lock_not_acquired",
+        });
         continue;
       }
 

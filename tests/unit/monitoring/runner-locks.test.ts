@@ -30,6 +30,17 @@ function createUpdateChain(result: { data?: unknown; error?: { message: string; 
   };
 }
 
+function createFetchChain(result: { data?: unknown; error?: { message: string; code?: string } }) {
+  return {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({
+      data: result.data ?? null,
+      error: result.error ?? null,
+    }),
+  };
+}
+
 const rawMonitorRow = {
   id: "monitor-1",
   organization_id: "org-1",
@@ -109,5 +120,33 @@ describe("runner locks", () => {
     expect(chain.or).toHaveBeenCalledWith(
       "lock_expires_at.is.null,lock_expires_at.lt.2026-06-01T00:00:00.000Z",
     );
+  });
+
+  it("fetches the monitor locked by this run when the update select returns no row", async () => {
+    const updateChain = createUpdateChain({ data: null });
+    const fetchChain = createFetchChain({
+      data: {
+        ...rawMonitorRow,
+        locked_by_run_id: "run-1",
+      },
+    });
+    const adminClient = {
+      from: vi
+        .fn()
+        .mockReturnValueOnce(updateChain)
+        .mockReturnValueOnce(fetchChain),
+    };
+
+    const monitor = await acquireMonitorLock(
+      "monitor-1",
+      "org-1",
+      "run-1",
+      new Date("2026-06-01T00:00:00Z"),
+      60_000,
+      adminClient as never,
+    );
+
+    expect(monitor?.id).toBe("monitor-1");
+    expect(fetchChain.eq).toHaveBeenCalledWith("locked_by_run_id", "run-1");
   });
 });

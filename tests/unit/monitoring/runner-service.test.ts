@@ -247,6 +247,70 @@ describe("runner service", () => {
     expect(releaseMonitorLockImpl).toHaveBeenCalledTimes(1);
     expect(tablesSeen).not.toContain("incidents");
     expect(tablesSeen).not.toContain("alert_deliveries");
+    expect(admin.runnerRunsChain.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        failure_summary: expect.arrayContaining([
+          expect.objectContaining({
+            monitorId: "monitor-1",
+            reason: "lock_not_acquired",
+            status: "skipped",
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it("executes an unknown enabled due monitor once it is locked", async () => {
+    const admin = createAdminClient();
+    const lockedMonitor = createMonitor({
+      status: "unknown",
+      isEnabled: true,
+      targetUrl: "https://example.com/health",
+      expectedStatusCodes: [200],
+    });
+    const persistScheduledMonitorExecutionResultImpl = vi.fn().mockResolvedValue({
+      result: {
+        id: "result-1",
+        status: "success",
+        triggerSource: "scheduled",
+        checkedAt: "2026-06-01T00:00:10Z",
+        durationMs: 10000,
+        httpStatus: 200,
+        errorCode: null,
+        errorSummary: null,
+        responseSummary: null,
+        assertionSummary: null,
+        metadataSummary: null,
+      },
+      duplicate: false,
+    });
+
+    const summary = await runScheduledMonitorRunner(
+      {},
+      {
+        now: new Date("2026-06-01T00:00:00Z"),
+        selectDueMonitorCandidatesImpl: vi.fn().mockResolvedValue([lockedMonitor]),
+        acquireMonitorLockImpl: vi.fn().mockResolvedValue(lockedMonitor),
+        evaluateMonitorImpl: vi.fn().mockResolvedValue(createExecutionResult()),
+        persistScheduledMonitorExecutionResultImpl,
+        processScheduledIncidentStateImpl: vi.fn().mockResolvedValue({
+          created: false,
+          updated: false,
+          incidentId: null,
+          action: "noop",
+        }),
+        releaseMonitorLockImpl: vi.fn().mockResolvedValue(undefined),
+      },
+      admin.client as never,
+    );
+
+    expect(summary).toMatchObject<Partial<MonitorRunnerSummary>>({
+      dueCount: 1,
+      executedCount: 1,
+      skippedCount: 0,
+      failedCount: 0,
+    });
+    expect(persistScheduledMonitorExecutionResultImpl).toHaveBeenCalledTimes(1);
   });
 
   it("continues processing when one monitor fails unexpectedly", async () => {

@@ -44,3 +44,5 @@ export async function POST(request: Request) {
     return createErrorResponse(error);
   }
 }
+
+export { POST as GET };

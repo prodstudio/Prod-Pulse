@@ -145,4 +145,35 @@ describe("cron alert runner route", () => {
       },
     });
   });
+
+  it("supports Vercel cron GET requests", async () => {
+    process.env.CRON_SECRET = "top-secret";
+    process.env.ALERT_RUNNER_ENABLED = "true";
+    process.env.SLACK_ALERTS_ENABLED = "true";
+    const runAlertDeliveryRunner = vi.fn().mockResolvedValue({
+      runId: "run-1",
+      selectedCount: 1,
+      sentCount: 1,
+      failedCount: 0,
+      skippedCount: 0,
+      durationMs: 250,
+    });
+
+    vi.doMock("@/lib/server/alerts/alert-engine", () => ({
+      runAlertDeliveryRunner,
+    }));
+
+    const { GET } = await import("@/app/api/cron/alert-runner/route");
+    const response = await GET(
+      new Request("https://example.com/api/cron/alert-runner", {
+        method: "GET",
+        headers: {
+          authorization: "Bearer top-secret",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(runAlertDeliveryRunner).toHaveBeenCalledTimes(1);
+  });
 });

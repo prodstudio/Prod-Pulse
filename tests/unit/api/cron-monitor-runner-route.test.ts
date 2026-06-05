@@ -109,4 +109,34 @@ describe("cron monitor runner route", () => {
       },
     });
   });
+
+  it("supports Vercel cron GET requests", async () => {
+    process.env.CRON_SECRET = "top-secret";
+    process.env.MONITOR_RUNNER_ENABLED = "true";
+    const runScheduledMonitorRunner = vi.fn().mockResolvedValue({
+      runId: "run-1",
+      dueCount: 1,
+      executedCount: 1,
+      skippedCount: 0,
+      failedCount: 0,
+      durationMs: 250,
+    });
+
+    vi.doMock("@/lib/server/monitoring/runner-service", () => ({
+      runScheduledMonitorRunner,
+    }));
+
+    const { GET } = await import("@/app/api/cron/monitor-runner/route");
+    const response = await GET(
+      new Request("https://example.com/api/cron/monitor-runner", {
+        method: "GET",
+        headers: {
+          authorization: "Bearer top-secret",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(runScheduledMonitorRunner).toHaveBeenCalledTimes(1);
+  });
 });
